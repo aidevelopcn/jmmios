@@ -37,3 +37,6 @@ scripts/team.env
 .idea/
 *.swp
 *~
+
+# Accidental artifacts
+<stdin>
