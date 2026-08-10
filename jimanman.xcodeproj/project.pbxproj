@@ -1,0 +1,546 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		04A5FDD72FDDD1F30028CE2E /* jimanmanApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A5FDD62FDDD1F30028CE2E /* jimanmanApp.swift */; };
+		04A5FDD92FDDD1F30028CE2E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A5FDD82FDDD1F30028CE2E /* ContentView.swift */; };
+		04A5FDDB2FDDD1F60028CE2E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 04A5FDDA2FDDD1F60028CE2E /* Assets.xcassets */; };
+		04A5FDDE2FDDD1F60028CE2E /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 04A5FDDD2FDDD1F60028CE2E /* Preview Assets.xcassets */; };
+		0DA44662861B8012F19A5884 /* GpaCalculatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F414839B7DBE59DBCA4C149 /* GpaCalculatorView.swift */; };
+		1F9042B581C0D4453B326419 /* MyAskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D551456283418B76960687D4 /* MyAskListView.swift */; };
+		37A64757A4B4B7A7235FD3F5 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04534896AD0D2BE81AB4E4E0 /* LoginView.swift */; };
+		505A4AE6BFBD24F30D4DB473 /* MyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 236B475994FE81C2CF355BAA /* MyView.swift */; };
+		57FC4F5593701486EB1A8B2F /* StudentInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87240749AD752A6050676E5 /* StudentInfoView.swift */; };
+		638648279C3F4CE21776769B /* AccountManageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A54FC78B68A842D541BE4D /* AccountManageView.swift */; };
+		8CF84D699F6DE8E4419A83E0 /* AiChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6452478AB169C5B132671EF3 /* AiChatView.swift */; };
+		B1C2D3E40123456789000001 /* AiCameraCaptureKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E40123456789000002 /* AiCameraCaptureKit.swift */; };
+		92A34BA4BBDC5A76A327BB3C /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31547D7BEDC1647FBA3EB29 /* HomeView.swift */; };
+		9E294CA5BA4DA5875898DBEB /* ApiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95784DA18BE660972D363AF4 /* ApiService.swift */; };
+		A1B2C3D451111111100000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000001 /* AppDelegate.swift */; };
+		A1B2C3D451111111100000002 /* WechatLoginBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000002 /* WechatLoginBridge.swift */; };
+		A1B2C3D451111111100000003 /* WechatOpenSDK-XCFramework.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000003 /* WechatOpenSDK-XCFramework.xcframework */; };
+		A1B2C3D451111111100000004 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000004 /* Security.framework */; };
+		A1B2C3D451111111100000005 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000005 /* SystemConfiguration.framework */; };
+		A1B2C3D451111111100000006 /* CoreTelephony.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000006 /* CoreTelephony.framework */; };
+		A1B2C3D451111111100000007 /* CFNetwork.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000007 /* CFNetwork.framework */; };
+		A1B2C3D451111111100000008 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000008 /* libsqlite3.tbd */; };
+		A1B2C3D451111111100000009 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000009 /* libz.tbd */; };
+		A9C54335A5C38BC621B18F09 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55494308B3625CB6AF1EB33A /* Models.swift */; };
+		AA3847219B9862552D59EC94 /* VipAndCourseViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 659B4259ACD751E1172799A7 /* VipAndCourseViews.swift */; };
+		AD39449181ABF1D0C67DAF7A /* ColorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = C73142F7A08C798874B490C6 /* ColorExtension.swift */; };
+		C20244BC8F9905DEDD999546 /* AssessmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE2546C08B29F4C8B58A35CB /* AssessmentViews.swift */; };
+		C2DB4E3BA8A8E4B5537F980A /* ApplyCloseAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CBE496CA6541D5229C8D144 /* ApplyCloseAccountView.swift */; };
+		C3E94569BE5CD03E8846EE66 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 549D4BD5BD332E82723B92D8 /* AppConfig.swift */; };
+		D46749A9B34E5C6E890744EB /* StudentCertificationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B7F42868D7DEC7DAC779724 /* StudentCertificationView.swift */; };
+		E2C040D89554EBFDC2C9062D /* MyCourseWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAC1453BBEDD273D581186ED /* MyCourseWebView.swift */; };
+		E6A34846A89412AAE1707DDD /* RechargeAndOrdersViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 815B4BCA9CAA424E99943A61 /* RechargeAndOrdersViews.swift */; };
+		FD064D6BB45D2AEBBF6DDB41 /* ConfirmCloseAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC94857986CB9DC28EE015C /* ConfirmCloseAccountView.swift */; };
+		B2C3D4E50123456789000001 /* AssessmentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000001 /* AssessmentStore.swift */; };
+		B2C3D4E50123456789000002 /* questions.json in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000002 /* questions.json */; };
+		B2C3D4E50123456789000003 /* MathMarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000003 /* MathMarkdownView.swift */; };
+		B2C3D4E70123456789000004 /* MarkdownWebViewPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E60123456789000004 /* MarkdownWebViewPool.swift */; };
+		B2C3D4E50123456789000004 /* katex.min.css in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000004 /* katex.min.css */; };
+		B2C3D4E50123456789000005 /* katex.min.js in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000005 /* katex.min.js */; };
+		B2C3D4E50123456789000006 /* marked.min.js in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000006 /* marked.min.js */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		03A54FC78B68A842D541BE4D /* AccountManageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AccountManageView.swift; path = jimanman/Views/Profile/AccountManageView.swift; sourceTree = "<group>"; };
+		04534896AD0D2BE81AB4E4E0 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LoginView.swift; path = jimanman/Views/Login/LoginView.swift; sourceTree = "<group>"; };
+		04A5FDD32FDDD1F30028CE2E /* jimanman.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = jimanman.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		04A5FDD62FDDD1F30028CE2E /* jimanmanApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = jimanmanApp.swift; sourceTree = "<group>"; };
+		04A5FDD82FDDD1F30028CE2E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		04A5FDDA2FDDD1F60028CE2E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		04A5FDDD2FDDD1F60028CE2E /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		236B475994FE81C2CF355BAA /* MyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyView.swift; path = jimanman/Views/Profile/MyView.swift; sourceTree = "<group>"; };
+		2B7F42868D7DEC7DAC779724 /* StudentCertificationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StudentCertificationView.swift; path = jimanman/Views/Profile/StudentCertificationView.swift; sourceTree = "<group>"; };
+		2CBE496CA6541D5229C8D144 /* ApplyCloseAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ApplyCloseAccountView.swift; path = jimanman/Views/Profile/ApplyCloseAccountView.swift; sourceTree = "<group>"; };
+		549D4BD5BD332E82723B92D8 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppConfig.swift; path = jimanman/AppConfig.swift; sourceTree = "<group>"; };
+		55494308B3625CB6AF1EB33A /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = jimanman/Models/Models.swift; sourceTree = "<group>"; };
+		6452478AB169C5B132671EF3 /* AiChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AiChatView.swift; path = jimanman/Views/Chat/AiChatView.swift; sourceTree = "<group>"; };
+		B1C2D3E40123456789000002 /* AiCameraCaptureKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AiCameraCaptureKit.swift; path = jimanman/Views/Chat/AiCameraCaptureKit.swift; sourceTree = "<group>"; };
+		659B4259ACD751E1172799A7 /* VipAndCourseViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VipAndCourseViews.swift; path = jimanman/Views/Profile/VipAndCourseViews.swift; sourceTree = "<group>"; };
+		7F414839B7DBE59DBCA4C149 /* GpaCalculatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GpaCalculatorView.swift; path = jimanman/Views/Gpa/GpaCalculatorView.swift; sourceTree = "<group>"; };
+		815B4BCA9CAA424E99943A61 /* RechargeAndOrdersViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RechargeAndOrdersViews.swift; path = jimanman/Views/Profile/RechargeAndOrdersViews.swift; sourceTree = "<group>"; };
+		95784DA18BE660972D363AF4 /* ApiService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ApiService.swift; path = jimanman/Services/ApiService.swift; sourceTree = "<group>"; };
+		9BC94857986CB9DC28EE015C /* ConfirmCloseAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConfirmCloseAccountView.swift; path = jimanman/Views/Profile/ConfirmCloseAccountView.swift; sourceTree = "<group>"; };
+		A1B2C3D441111111100000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = jimanman/AppDelegate.swift; sourceTree = "<group>"; };
+		A1B2C3D441111111100000002 /* WechatLoginBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WechatLoginBridge.swift; path = jimanman/Services/WechatLoginBridge.swift; sourceTree = "<group>"; };
+		A1B2C3D441111111100000003 /* WechatOpenSDK-XCFramework.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = "WechatOpenSDK-XCFramework.xcframework"; path = "Vendor/WechatOpenSDK-XCFramework.xcframework"; sourceTree = "<group>"; };
+		A1B2C3D441111111100000004 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		A1B2C3D441111111100000005 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
+		A1B2C3D441111111100000006 /* CoreTelephony.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreTelephony.framework; path = System/Library/Frameworks/CoreTelephony.framework; sourceTree = SDKROOT; };
+		A1B2C3D441111111100000007 /* CFNetwork.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CFNetwork.framework; path = System/Library/Frameworks/CFNetwork.framework; sourceTree = SDKROOT; };
+		A1B2C3D441111111100000008 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
+		A1B2C3D441111111100000009 /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
+		A1B2C3D441111111100000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = jimanman/Info.plist; sourceTree = "<group>"; };
+		A31547D7BEDC1647FBA3EB29 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HomeView.swift; path = jimanman/Views/Home/HomeView.swift; sourceTree = "<group>"; };
+		AAC1453BBEDD273D581186ED /* MyCourseWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyCourseWebView.swift; path = jimanman/Views/Profile/MyCourseWebView.swift; sourceTree = "<group>"; };
+		AE2546C08B29F4C8B58A35CB /* AssessmentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssessmentViews.swift; path = jimanman/Views/Assessment/AssessmentViews.swift; sourceTree = "<group>"; };
+		C73142F7A08C798874B490C6 /* ColorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorExtension.swift; path = jimanman/Utils/ColorExtension.swift; sourceTree = "<group>"; };
+		D551456283418B76960687D4 /* MyAskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyAskListView.swift; path = jimanman/Views/Profile/MyAskListView.swift; sourceTree = "<group>"; };
+		D87240749AD752A6050676E5 /* StudentInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StudentInfoView.swift; path = jimanman/Views/Profile/StudentInfoView.swift; sourceTree = "<group>"; };
+		B2C3D4E40123456789000001 /* AssessmentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssessmentStore.swift; path = jimanman/Services/AssessmentStore.swift; sourceTree = "<group>"; };
+		B2C3D4E40123456789000002 /* questions.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = questions.json; path = jimanman/questions.json; sourceTree = "<group>"; };
+		B2C3D4E40123456789000003 /* MathMarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MathMarkdownView.swift; path = jimanman/Views/Chat/MathMarkdownView.swift; sourceTree = "<group>"; };
+		B2C3D4E60123456789000004 /* MarkdownWebViewPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MarkdownWebViewPool.swift; path = jimanman/Views/Chat/MarkdownWebViewPool.swift; sourceTree = "<group>"; };
+		B2C3D4E40123456789000004 /* katex.min.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = katex.min.css; path = jimanman/math/katex.min.css; sourceTree = "<group>"; };
+		B2C3D4E40123456789000005 /* katex.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = katex.min.js; path = jimanman/math/katex.min.js; sourceTree = "<group>"; };
+		B2C3D4E40123456789000006 /* marked.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = marked.min.js; path = jimanman/math/marked.min.js; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		04A5FDD02FDDD1F30028CE2E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D451111111100000003 /* WechatOpenSDK-XCFramework.xcframework in Frameworks */,
+				A1B2C3D451111111100000004 /* Security.framework in Frameworks */,
+				A1B2C3D451111111100000005 /* SystemConfiguration.framework in Frameworks */,
+				A1B2C3D451111111100000006 /* CoreTelephony.framework in Frameworks */,
+				A1B2C3D451111111100000007 /* CFNetwork.framework in Frameworks */,
+				A1B2C3D451111111100000008 /* libsqlite3.tbd in Frameworks */,
+				A1B2C3D451111111100000009 /* libz.tbd in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		04757C912FDE3B780084D5AD /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D441111111100000004 /* Security.framework */,
+				A1B2C3D441111111100000005 /* SystemConfiguration.framework */,
+				A1B2C3D441111111100000006 /* CoreTelephony.framework */,
+				A1B2C3D441111111100000007 /* CFNetwork.framework */,
+				A1B2C3D441111111100000008 /* libsqlite3.tbd */,
+				A1B2C3D441111111100000009 /* libz.tbd */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+		04A5FDCA2FDDD1F30028CE2E = {
+			isa = PBXGroup;
+			children = (
+				04A5FDD52FDDD1F30028CE2E /* jimanman */,
+				04A5FDD42FDDD1F30028CE2E /* Products */,
+				549D4BD5BD332E82723B92D8 /* AppConfig.swift */,
+				C73142F7A08C798874B490C6 /* ColorExtension.swift */,
+				55494308B3625CB6AF1EB33A /* Models.swift */,
+				A31547D7BEDC1647FBA3EB29 /* HomeView.swift */,
+				6452478AB169C5B132671EF3 /* AiChatView.swift */,
+				B1C2D3E40123456789000002 /* AiCameraCaptureKit.swift */,
+				7F414839B7DBE59DBCA4C149 /* GpaCalculatorView.swift */,
+				AE2546C08B29F4C8B58A35CB /* AssessmentViews.swift */,
+				03A54FC78B68A842D541BE4D /* AccountManageView.swift */,
+				2CBE496CA6541D5229C8D144 /* ApplyCloseAccountView.swift */,
+				9BC94857986CB9DC28EE015C /* ConfirmCloseAccountView.swift */,
+				D551456283418B76960687D4 /* MyAskListView.swift */,
+				AAC1453BBEDD273D581186ED /* MyCourseWebView.swift */,
+				236B475994FE81C2CF355BAA /* MyView.swift */,
+				815B4BCA9CAA424E99943A61 /* RechargeAndOrdersViews.swift */,
+				2B7F42868D7DEC7DAC779724 /* StudentCertificationView.swift */,
+				D87240749AD752A6050676E5 /* StudentInfoView.swift */,
+				659B4259ACD751E1172799A7 /* VipAndCourseViews.swift */,
+				04534896AD0D2BE81AB4E4E0 /* LoginView.swift */,
+				95784DA18BE660972D363AF4 /* ApiService.swift */,
+				A1B2C3D441111111100000001 /* AppDelegate.swift */,
+				A1B2C3D441111111100000002 /* WechatLoginBridge.swift */,
+				B2C3D4E40123456789000001 /* AssessmentStore.swift */,
+				B2C3D4E40123456789000002 /* questions.json */,
+				B2C3D4E40123456789000003 /* MathMarkdownView.swift */,
+				B2C3D4E60123456789000004 /* MarkdownWebViewPool.swift */,
+				B2C3D4E40123456789000004 /* katex.min.css */,
+				B2C3D4E40123456789000005 /* katex.min.js */,
+				B2C3D4E40123456789000006 /* marked.min.js */,
+				A1B2C3D441111111100000010 /* Info.plist */,
+				A1B2C3D441111111100000003 /* WechatOpenSDK-XCFramework.xcframework */,
+				04757C912FDE3B780084D5AD /* Recovered References */,
+			);
+			sourceTree = "<group>";
+		};
+		04A5FDD42FDDD1F30028CE2E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				04A5FDD32FDDD1F30028CE2E /* jimanman.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		04A5FDD52FDDD1F30028CE2E /* jimanman */ = {
+			isa = PBXGroup;
+			children = (
+				04A5FDD62FDDD1F30028CE2E /* jimanmanApp.swift */,
+				04A5FDD82FDDD1F30028CE2E /* ContentView.swift */,
+				04A5FDDA2FDDD1F60028CE2E /* Assets.xcassets */,
+				04A5FDDC2FDDD1F60028CE2E /* Preview Content */,
+			);
+			path = jimanman;
+			sourceTree = "<group>";
+		};
+		04A5FDDC2FDDD1F60028CE2E /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				04A5FDDD2FDDD1F60028CE2E /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		04A5FDD22FDDD1F30028CE2E /* jimanman */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 04A5FDE12FDDD1F60028CE2E /* Build configuration list for PBXNativeTarget "jimanman" */;
+			buildPhases = (
+				04A5FDCF2FDDD1F30028CE2E /* Sources */,
+				04A5FDD02FDDD1F30028CE2E /* Frameworks */,
+				04A5FDD12FDDD1F30028CE2E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = jimanman;
+			productName = jimanman;
+			productReference = 04A5FDD32FDDD1F30028CE2E /* jimanman.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		04A5FDCB2FDDD1F30028CE2E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1420;
+				LastUpgradeCheck = 1420;
+				TargetAttributes = {
+					04A5FDD22FDDD1F30028CE2E = {
+						CreatedOnToolsVersion = 14.2;
+					};
+				};
+			};
+			buildConfigurationList = 04A5FDCE2FDDD1F30028CE2E /* Build configuration list for PBXProject "jimanman" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 04A5FDCA2FDDD1F30028CE2E;
+			productRefGroup = 04A5FDD42FDDD1F30028CE2E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				04A5FDD22FDDD1F30028CE2E /* jimanman */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		04A5FDD12FDDD1F30028CE2E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				04A5FDDE2FDDD1F60028CE2E /* Preview Assets.xcassets in Resources */,
+				04A5FDDB2FDDD1F60028CE2E /* Assets.xcassets in Resources */,
+				B2C3D4E50123456789000002 /* questions.json in Resources */,
+				B2C3D4E50123456789000004 /* katex.min.css in Resources */,
+				B2C3D4E50123456789000005 /* katex.min.js in Resources */,
+				B2C3D4E50123456789000006 /* marked.min.js in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		04A5FDCF2FDDD1F30028CE2E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				04A5FDD92FDDD1F30028CE2E /* ContentView.swift in Sources */,
+				04A5FDD72FDDD1F30028CE2E /* jimanmanApp.swift in Sources */,
+				C3E94569BE5CD03E8846EE66 /* AppConfig.swift in Sources */,
+				AD39449181ABF1D0C67DAF7A /* ColorExtension.swift in Sources */,
+				A9C54335A5C38BC621B18F09 /* Models.swift in Sources */,
+				92A34BA4BBDC5A76A327BB3C /* HomeView.swift in Sources */,
+				8CF84D699F6DE8E4419A83E0 /* AiChatView.swift in Sources */,
+				B1C2D3E40123456789000001 /* AiCameraCaptureKit.swift in Sources */,
+				0DA44662861B8012F19A5884 /* GpaCalculatorView.swift in Sources */,
+				C20244BC8F9905DEDD999546 /* AssessmentViews.swift in Sources */,
+				638648279C3F4CE21776769B /* AccountManageView.swift in Sources */,
+				C2DB4E3BA8A8E4B5537F980A /* ApplyCloseAccountView.swift in Sources */,
+				FD064D6BB45D2AEBBF6DDB41 /* ConfirmCloseAccountView.swift in Sources */,
+				1F9042B581C0D4453B326419 /* MyAskListView.swift in Sources */,
+				E2C040D89554EBFDC2C9062D /* MyCourseWebView.swift in Sources */,
+				505A4AE6BFBD24F30D4DB473 /* MyView.swift in Sources */,
+				E6A34846A89412AAE1707DDD /* RechargeAndOrdersViews.swift in Sources */,
+				D46749A9B34E5C6E890744EB /* StudentCertificationView.swift in Sources */,
+				57FC4F5593701486EB1A8B2F /* StudentInfoView.swift in Sources */,
+				AA3847219B9862552D59EC94 /* VipAndCourseViews.swift in Sources */,
+				37A64757A4B4B7A7235FD3F5 /* LoginView.swift in Sources */,
+				9E294CA5BA4DA5875898DBEB /* ApiService.swift in Sources */,
+				A1B2C3D451111111100000001 /* AppDelegate.swift in Sources */,
+				A1B2C3D451111111100000002 /* WechatLoginBridge.swift in Sources */,
+				B2C3D4E50123456789000001 /* AssessmentStore.swift in Sources */,
+				B2C3D4E50123456789000003 /* MathMarkdownView.swift in Sources */,
+				B2C3D4E70123456789000004 /* MarkdownWebViewPool.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		04A5FDDF2FDDD1F60028CE2E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		04A5FDE02FDDD1F60028CE2E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		04A5FDE22FDDD1F60028CE2E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
+				DEVELOPMENT_TEAM = QNC87AZURH;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = jimanman/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "绩满满";
+				INFOPLIST_KEY_NSCameraUsageDescription = "需要访问相机以拍摄题目进行AI答疑";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要访问相册以发送图片进行AI答疑";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/jimanman",
+					"$(SRCROOT)/jimanman/Utils",
+					"$(SRCROOT)/jimanman/Models",
+					"$(SRCROOT)/jimanman/Views/Home",
+					"$(SRCROOT)/jimanman/Views/Chat",
+					"$(SRCROOT)/jimanman/Views/Gpa",
+					"$(SRCROOT)/jimanman/Views/Assessment",
+					"$(SRCROOT)/jimanman/Views/Profile",
+					"$(SRCROOT)/jimanman/Views/Login",
+					"$(SRCROOT)/jimanman/Services",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+					"-all_load",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaoshub.jimanman;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "jimanman/jimanman-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		04A5FDE32FDDD1F60028CE2E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
+				DEVELOPMENT_TEAM = QNC87AZURH;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = jimanman/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "绩满满";
+				INFOPLIST_KEY_NSCameraUsageDescription = "需要访问相机以拍摄题目进行AI答疑";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要访问相册以发送图片进行AI答疑";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/jimanman",
+					"$(SRCROOT)/jimanman/Utils",
+					"$(SRCROOT)/jimanman/Models",
+					"$(SRCROOT)/jimanman/Views/Home",
+					"$(SRCROOT)/jimanman/Views/Chat",
+					"$(SRCROOT)/jimanman/Views/Gpa",
+					"$(SRCROOT)/jimanman/Views/Assessment",
+					"$(SRCROOT)/jimanman/Views/Profile",
+					"$(SRCROOT)/jimanman/Views/Login",
+					"$(SRCROOT)/jimanman/Services",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+					"-all_load",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaoshub.jimanman;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "jimanman/jimanman-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		04A5FDCE2FDDD1F30028CE2E /* Build configuration list for PBXProject "jimanman" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				04A5FDDF2FDDD1F60028CE2E /* Debug */,
+				04A5FDE02FDDD1F60028CE2E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		04A5FDE12FDDD1F60028CE2E /* Build configuration list for PBXNativeTarget "jimanman" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				04A5FDE22FDDD1F60028CE2E /* Debug */,
+				04A5FDE32FDDD1F60028CE2E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 04A5FDCB2FDDD1F30028CE2E /* Project object */;
+}

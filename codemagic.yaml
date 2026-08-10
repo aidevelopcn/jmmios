@@ -1,0 +1,81 @@
+# 绩满满 iOS — Codemagic 云端打包
+# 文档: docs/CODEMAGIC_GUIDE.md
+
+workflows:
+  jimanman-appstore:
+    name: 绩满满 App Store
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      groups:
+        - app_store_credentials   # 在 Codemagic 后台配置，见 CODEMAGIC_GUIDE.md
+        - certificate_credentials
+      vars:
+        XCODE_PROJECT: jimanman.xcodeproj
+        XCODE_SCHEME: jimanman
+        BUNDLE_ID: com.gaoshub.jimanman
+        # App Store Connect → App → 综合 → Apple ID（纯数字），首次需手动填写
+        APP_STORE_APPLE_ID: 0
+      xcode: latest
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: master
+          include: true
+
+    scripts:
+      - name: 初始化签名钥匙串
+        script: |
+          keychain initialize
+
+      - name: 拉取 App Store 签名文件
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+      - name: 导入证书
+        script: |
+          keychain add-certificates
+
+      - name: 配置描述文件
+        script: |
+          xcode-project use-profiles
+
+      - name: 自动递增 Build 号
+        script: |
+          if [ "$APP_STORE_APPLE_ID" != "0" ]; then
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID")
+            agvtool new-version -all $((LATEST + 1))
+          else
+            echo "⚠️ 请在 codemagic.yaml 或环境变量中设置 APP_STORE_APPLE_ID"
+            agvtool new-version -all $BUILD_NUMBER
+          fi
+
+      - name: 编译 App Store IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$XCODE_PROJECT" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      email:
+        recipients:
+          - tianaoteam@126.com
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: false

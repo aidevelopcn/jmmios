@@ -1,0 +1,79 @@
+# 绩满满 App Store Connect 填写模板
+# 复制对应字段到 App Store Connect
+
+[基本信息]
+应用名称=绩满满
+副标题=大学生绩点提升与 AI 学业助手
+Bundle ID=com.gaoshub.jimanman
+SKU=jimanman-ios
+版本号=1.0
+构建号=1
+主要类别=教育
+次要类别=效率
+价格=免费
+最低系统版本=iOS 15.0
+
+[URL]
+隐私政策=https://ad.91jmm.com/api/article/ysxy
+用户协议=https://ad.91jmm.com/api/article/user
+技术支持=https://ad.91jmm.com/api/article/user
+营销网址=https://ad.91jmm.com
+
+[关键词]
+绩满满,绩点,GPA,AI答疑,大学生,学习,测评,高数,考研,学业规划
+
+[推广文本]
+绩满满专注大学生绩点提升与学业规划，提供 AI 答疑、GPA 计算、学习能力测评等功能，助力高效学习。
+
+[描述]
+绩满满是面向大学生的学业提升工具，由原「高数帮」品牌升级而来，由天津考星科技有限公司运营。
+
+【核心功能】
+• AI 答疑：拍照或输入题目，获取 AI 学习辅导
+• GPA 计算：支持多种绩点算法，快速估算成绩
+• 学习能力测试：多维度测评并生成报告
+• 我的课程：查看已购课程（跳转浏览器）
+• 个人中心：管理账号、答疑记录、会员与订单
+
+【适用人群】
+在校大学生、考研备考学生及有绩点提升需求的用户。
+
+【登录方式】
+支持微信授权登录。
+
+【联系我们】
+客服 QQ：942210353
+邮箱：2636239710@qq.com
+
+[版权]
+© 2026 天津考星科技有限公司
+
+[开发者账号]
+Apple ID=tianaoteam@126.com
+Team ID=QNC87AZURH
+Team Name=Tianjin Kaoxing Technology Co.,Ltd.
+
+[微信]
+微信 AppID=wx25240f7addf5c344
+Universal Link=https://ad.91jmm.com/jimanman/
+
+[ICP备案-iOS特征信息]
+Bundle ID=com.gaoshub.jimanman
+签名SHA1=AA:03:B1:39:07:6F:FA:9F:DF:C1:CE:10:24:00:E1:BE:23:05:85:BF
+签名SHA1无冒号=AA03B139076FFA9FDFC1CE102400E1BE230585BF
+公钥模数HEX=0095051a15d787615d3f5e03e545c7d38d95aa43e5e0e68e4bcdd730a044290e6b6782b80e6c59f8a4378ef0bc6501fcd6329a772f8f135ca2330c9ef6b021ca21ce6b2fb03cc0d322fac15c7e6a740e44283f44d93d74374105bbd5fdefd53344406212a7bf2262712d41014c3d59a02ae3d1ce243c5aae2dcc40a404a6c779a249e7104ca7c211a1d10c57e56f834a03cc8171a22e61346449375f9dcee53c77f6ccea46457a22b27b8f70ce8baca678f28e93a3e826411e309c69752b1afdccff47fd077bea56b1d9b60c261b410aa38600495138a6c6664c64922095783b6559a6bbde8f67f62a4a85739a5500a483351f8dda7f3422166c6e94178e48fdaf
+
+[审核备注-模板]
+测试账号：（待填写）
+1. 微信登录：我的 → 登录 → 微信授权
+2. AI 答疑：答疑 Tab → 输入或拍照
+3. GPA：首页 → GPA 计算
+4. 测评：首页 → 学习能力测试
+5. 我的课程：跳转 Safari 打开外部课程页
+
+[公司信息]
+公司名称=天津考星科技有限公司
+注册地址=天津市红桥区咸阳路29号中保财信大厦9楼9010052
+客服电话=17316243850
+客服QQ=942210353
+客服邮箱=2636239710@qq.com

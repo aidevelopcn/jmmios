@@ -1,0 +1,39 @@
+# Xcode
+DerivedData/
+*.xcuserstate
+*.xcuserdata
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Build outputs
+build/jimanman.xcarchive/
+build/ipa/
+build/ipa_inspect/
+build/*.log
+build/ExportOptions.generated.plist
+build/DerivedData/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Local team config (use scripts/team.env.example)
+scripts/team.env
+
+# Secrets
+*.p12
+*.mobileprovision
+*.pem
+.env
+.env.*
+
+# IDE
+.idea/
+*.swp
+*~
