@@ -17,6 +17,12 @@ enum DebugLoginConfig {
 }
 #endif
 
+/// App Store 功能开关
+enum AppFeatures {
+    /// iOS App Store 版关闭微信支付储值，避免 Guideline 3.1.1
+    static let showRecharge = false
+}
+
 /// 用户协议链接
 enum AgreementURL {
     static let userAgreement = "https://ad.91jmm.com/api/article/user"

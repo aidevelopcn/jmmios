@@ -78,7 +78,9 @@ struct VipCenterView: View {
         ProfileScreenScaffold(background: Color.white) {
             VStack(spacing: 0) {
                 ProfileSimpleTopBar(title: "会员中心", onBack: onBack)
-                ProfileMenuRow(title: "储值", action: onOpenRecharge)
+                if AppFeatures.showRecharge {
+                    ProfileMenuRow(title: "储值", action: onOpenRecharge)
+                }
                 ProfileMenuRow(title: "我的订单", action: onOpenOrders)
                 Spacer(minLength: 0)
             }

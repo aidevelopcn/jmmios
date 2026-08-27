@@ -1,0 +1,5 @@
+# 绩满满 iOS 测试设备 UDID（Ad Hoc / 蒲公英安装前须加入 Apple Developer → Devices）
+# 格式：设备名<TAB或空格>UDID
+# 添加后重新执行 ./scripts/build_ipa.sh 生成含新设备的描述文件
+
+iPad Test	00008103-0012751A1180801E

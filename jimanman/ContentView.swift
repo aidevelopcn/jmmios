@@ -144,9 +144,17 @@ struct ContentView: View {
         case .myAsk:
             MyAskListView(onBack: { profileRoute = nil }, onNeedLogin: { showLogin = true })
         case .vipCenter:
-            VipCenterView(onBack: { profileRoute = nil }, onOpenRecharge: { profileRoute = .recharge }, onOpenOrders: { profileRoute = .myOrders })
+            VipCenterView(onBack: { profileRoute = nil }, onOpenRecharge: {
+                if AppFeatures.showRecharge {
+                    profileRoute = .recharge
+                }
+            }, onOpenOrders: { profileRoute = .myOrders })
         case .recharge:
-            RechargeView(onBack: { profileRoute = .vipCenter })
+            if AppFeatures.showRecharge {
+                RechargeView(onBack: { profileRoute = .vipCenter })
+            } else {
+                Color.clear.onAppear { profileRoute = .vipCenter }
+            }
         case .myOrders:
             MyOrderView(onBack: { profileRoute = .vipCenter })
         case .account:

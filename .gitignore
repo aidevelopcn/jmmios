@@ -26,6 +26,10 @@ build/DerivedData/
 # Local team config (use scripts/team.env.example)
 scripts/team.env
 
+# Codemagic secrets (see scripts/codemagic-secrets/CODEMAGIC_后台填写.txt)
+scripts/codemagic-secrets/
+scripts/codemagic.env
+
 # Secrets
 *.p12
 *.mobileprovision

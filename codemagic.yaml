@@ -16,7 +16,7 @@ workflows:
         XCODE_SCHEME: jimanman
         BUNDLE_ID: com.gaoshub.jimanman
         # App Store Connect → App → 综合 → Apple ID（纯数字），首次需手动填写
-        APP_STORE_APPLE_ID: 0
+        APP_STORE_APPLE_ID: 6788223645
       xcode: latest
 
     triggering:
