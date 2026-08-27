@@ -18,13 +18,18 @@ struct MyView: View {
     @State private var selectedImage: UIImage?
     @State private var imageUploading = false
     
-    private let menuItems: [(title: String, icon: String)] = [
-        ("基本信息", "sligo"),
-        ("我的答疑", "myask"),
-        ("我的测评", "item_c3"),
-        ("会员中心", "item_c2"),
-        ("账号管理", "item_c5")
-    ]
+    private var menuItems: [(title: String, icon: String)] {
+        var items: [(title: String, icon: String)] = [
+            ("基本信息", "sligo"),
+            ("我的答疑", "myask"),
+            ("我的测评", "item_c3"),
+        ]
+        if AppFeatures.showMembership {
+            items.append(("会员中心", "item_c2"))
+        }
+        items.append(("账号管理", "item_c5"))
+        return items
+    }
     
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -97,11 +102,13 @@ struct MyView: View {
                                 .foregroundColor(.white)
                         }
                     }
-                    
-                    let vipText = userProfile?.isVip == true ? "VIP\(userProfile?.vipTime ?? "")到期" : "VIP已过期"
-                    Text(vipText)
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "E6FFFB"))
+
+                    if AppFeatures.showMembership {
+                        let vipText = userProfile?.isVip == true ? "VIP\(userProfile?.vipTime ?? "")到期" : "VIP已过期"
+                        Text(vipText)
+                            .font(.system(size: 13))
+                            .foregroundColor(Color(hex: "E6FFFB"))
+                    }
                 }
             }
             

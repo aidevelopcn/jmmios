@@ -144,19 +144,27 @@ struct ContentView: View {
         case .myAsk:
             MyAskListView(onBack: { profileRoute = nil }, onNeedLogin: { showLogin = true })
         case .vipCenter:
-            VipCenterView(onBack: { profileRoute = nil }, onOpenRecharge: {
-                if AppFeatures.showRecharge {
-                    profileRoute = .recharge
-                }
-            }, onOpenOrders: { profileRoute = .myOrders })
+            if AppFeatures.showMembership {
+                VipCenterView(onBack: { profileRoute = nil }, onOpenRecharge: {
+                    if AppFeatures.showRecharge {
+                        profileRoute = .recharge
+                    }
+                }, onOpenOrders: { profileRoute = .myOrders })
+            } else {
+                Color.clear.onAppear { profileRoute = nil }
+            }
         case .recharge:
             if AppFeatures.showRecharge {
                 RechargeView(onBack: { profileRoute = .vipCenter })
             } else {
-                Color.clear.onAppear { profileRoute = .vipCenter }
+                Color.clear.onAppear { profileRoute = nil }
             }
         case .myOrders:
-            MyOrderView(onBack: { profileRoute = .vipCenter })
+            if AppFeatures.showMembership {
+                MyOrderView(onBack: { profileRoute = .vipCenter })
+            } else {
+                Color.clear.onAppear { profileRoute = nil }
+            }
         case .account:
             AccountManageView(onBack: { profileRoute = nil }) {
                 ApiService.shared.token = nil

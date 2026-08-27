@@ -19,8 +19,10 @@ enum DebugLoginConfig {
 
 /// App Store 功能开关
 enum AppFeatures {
-    /// iOS App Store 版关闭微信支付储值，避免 Guideline 3.1.1
-    static let showRecharge = false
+    /// iOS App Store 版隐藏会员/储值相关入口，避免 Guideline 3.1.1
+    static let showMembership = false
+
+    static var showRecharge: Bool { showMembership }
 }
 
 /// 用户协议链接
