@@ -14,83 +14,35 @@ struct LoginScreen: View {
     @State private var loginSession = 0
 
     var body: some View {
-        ZStack {
-            Image("login_bg")
-                .resizable()
-                .scaledToFill()
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack {
+                Image("login_bg")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
 
-            VStack(spacing: 0) {
-                Spacer()
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
 
-                Button(action: handleLogin) {
-                    Image("wxbtn")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 235, height: 50)
+                    loginControls
+                        .frame(maxWidth: 420)
+                        .frame(maxWidth: .infinity)
+                        .padding(.bottom, max(proxy.safeAreaInsets.bottom + 16, 32))
                 }
-                .disabled(loading)
-                .opacity(loading ? 0.6 : (checked ? 1 : 0.6))
+                .frame(width: proxy.size.width, height: proxy.size.height)
 
-                #if DEBUG
-                Spacer().frame(height: 12)
-
-                Button(action: handleTestLogin) {
-                    Text("测试登录")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white)
-                        .frame(width: 235, height: 44)
-                        .background(AppColors.primaryLight)
-                        .cornerRadius(8)
+                if loading {
+                    Color.black.opacity(0.33)
+                        .ignoresSafeArea()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.2)
                 }
-                .disabled(loading)
-                .opacity(loading ? 0.6 : (checked ? 1 : 0.6))
-                #endif
-
-                Spacer().frame(height: 16)
-
-                HStack(spacing: 8) {
-                    Button(action: { checked.toggle() }) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(checked ? AppColors.primaryLight : Color.white)
-                                .frame(width: 18, height: 18)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(checked ? AppColors.primaryLight : Color(hex: "CCCCCC"), lineWidth: 1)
-                                )
-                            if checked {
-                                Text("✓")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    agreementText
-                }
-
-                Spacer().frame(height: 20)
-
-                Button(action: onBack) {
-                    Text("返回")
-                        .font(.system(size: 14))
-                        .foregroundColor(AppColors.primary)
-                }
-                .buttonStyle(.plain)
-
-                Spacer().frame(height: 40)
             }
-
-            if loading {
-                Color.black.opacity(0.33)
-                    .ignoresSafeArea()
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(1.2)
-            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
+        .ignoresSafeArea()
         .alert("提示", isPresented: $showError) {
             Button("确定") {}
         } message: {
@@ -99,6 +51,54 @@ struct LoginScreen: View {
         .onDisappear {
             cancelLoginFlow()
         }
+    }
+
+    private var loginControls: some View {
+        VStack(spacing: 0) {
+            Button(action: handleLogin) {
+                Image("wxbtn")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 235, height: 50)
+            }
+            .disabled(loading)
+            .opacity(loading ? 0.6 : (checked ? 1 : 0.6))
+
+            Spacer().frame(height: 16)
+
+            HStack(spacing: 8) {
+                Button(action: { checked.toggle() }) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(checked ? AppColors.primaryLight : Color.white)
+                            .frame(width: 18, height: 18)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(checked ? AppColors.primaryLight : Color(hex: "CCCCCC"), lineWidth: 1)
+                            )
+                        if checked {
+                            Text("✓")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                agreementText
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+
+            Spacer().frame(height: 20)
+
+            Button(action: onBack) {
+                Text("返回")
+                    .font(.system(size: 14))
+                    .foregroundColor(AppColors.primary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 24)
     }
 
     private var agreementText: some View {
@@ -216,16 +216,4 @@ struct LoginScreen: View {
         loginWatchdog?.cancel()
         loginWatchdog = nil
     }
-
-    #if DEBUG
-    private func handleTestLogin() {
-        guard checked else {
-            presentError("请阅读并同意用户协议和隐私协议")
-            return
-        }
-        ApiService.shared.token = DebugLoginConfig.testToken
-        UserDefaults.standard.set(DebugLoginConfig.testUserId, forKey: "jmm_user_id")
-        onLoginSuccess()
-    }
-    #endif
 }

@@ -13,16 +13,30 @@ struct ContentView: View {
     
     // 协议弹窗
     @AppStorage("agreementAccepted") private var agreementAccepted = false
-    @State private var showAgreementAlert = false
     @State private var showOpenCourseError = false
     
     var body: some View {
-        Group {
-            if !agreementAccepted && !showAgreementAlert {
-                ZStack {
-                    Color.clear.onAppear { showAgreementAlert = true }
+        ZStack {
+            mainContent
+        }
+        .overlay {
+            if !agreementAccepted {
+                AgreementGateView {
+                    agreementAccepted = true
                 }
-            } else if showLogin {
+            }
+        }
+        .alert("提示", isPresented: $showOpenCourseError) {
+            Button("确定", role: .cancel) {}
+        } message: {
+            Text("无法打开课程页面，请稍后重试")
+        }
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        Group {
+            if showLogin {
                 LoginScreen(onBack: { showLogin = false }, onLoginSuccess: {
                     showLogin = false
                     selectedTab = 2
@@ -115,27 +129,6 @@ struct ContentView: View {
                 }
             }
         }
-        .alert("提示", isPresented: $showOpenCourseError) {
-            Button("确定", role: .cancel) {}
-        } message: {
-            Text("无法打开课程页面，请稍后重试")
-        }
-        .alert("服务协议和隐私政策", isPresented: $showAgreementAlert) {
-            Button("不同意", role: .destructive) { exit(0) }
-            Button("同意并继续") { agreementAccepted = true }
-        } message: {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("欢迎使用绩满满。请先阅读并同意《用户协议》和《隐私协议》后继续使用。")
-                HStack(spacing: 0) {
-                    Link("用户协议", destination: URL(string: AgreementURL.userAgreement)!)
-                        .foregroundColor(.blue)
-                    Text("  |  ")
-                        .foregroundColor(AppColors.textMuted)
-                    Link("隐私协议", destination: URL(string: AgreementURL.privacyPolicy)!)
-                        .foregroundColor(.blue)
-                }
-            }
-        }
     }
     
     @ViewBuilder
@@ -182,6 +175,54 @@ struct ContentView: View {
             StudentInfoView(onBack: { profileRoute = nil }) { profileRoute = .studentCertification }
         case .studentCertification:
             StudentCertificationView(onBack: { profileRoute = .studentInfo })
+        }
+    }
+}
+
+// MARK: - 首次启动协议（iPad 上 alert + Link 会导致卡启动页，改用全屏弹层）
+private struct AgreementGateView: View {
+    let onAccept: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("服务协议和隐私政策")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(AppColors.textPrimary)
+
+                Text("欢迎使用绩满满。请先阅读并同意《用户协议》和《隐私协议》后继续使用。")
+                    .font(.system(size: 14))
+                    .foregroundColor(AppColors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 12) {
+                    Link("用户协议", destination: URL(string: AgreementURL.userAgreement)!)
+                        .font(.system(size: 14))
+                    Text("|")
+                        .foregroundColor(AppColors.textMuted)
+                    Link("隐私协议", destination: URL(string: AgreementURL.privacyPolicy)!)
+                        .font(.system(size: 14))
+                }
+
+                Button(action: onAccept) {
+                    Text("同意并继续")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppColors.primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
+            .padding(20)
+            .frame(maxWidth: 360)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 24)
         }
     }
 }
