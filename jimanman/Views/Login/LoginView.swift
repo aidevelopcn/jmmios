@@ -55,12 +55,28 @@ struct LoginScreen: View {
 
     private var loginControls: some View {
         VStack(spacing: 0) {
-            Button(action: handleLogin) {
-                Image("wxbtn")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 235, height: 50)
+            GeometryReader { geo in
+                let buttonWidth = (geo.size.width - LoginButtonMetrics.spacing) / 2
+                HStack(spacing: LoginButtonMetrics.spacing) {
+                    SocialLoginButton(
+                        title: "Apple 登录",
+                        background: Color.black,
+                        foreground: .white,
+                        action: handleAppleLogin
+                    )
+                    .frame(width: buttonWidth, height: LoginButtonMetrics.height)
+
+                    SocialLoginButton(
+                        title: "微信登录",
+                        background: Color(hex: "07C160"),
+                        foreground: .white,
+                        action: handleWechatLogin
+                    )
+                    .frame(width: buttonWidth, height: LoginButtonMetrics.height)
+                }
+                .frame(width: geo.size.width, height: LoginButtonMetrics.height)
             }
+            .frame(height: LoginButtonMetrics.height)
             .disabled(loading)
             .opacity(loading ? 0.6 : (checked ? 1 : 0.6))
 
@@ -116,20 +132,59 @@ struct LoginScreen: View {
         }
     }
 
-    private func handleLogin() {
+    private func handleAppleLogin() {
         guard checked else {
             presentError("请阅读并同意用户协议和隐私协议")
-            return
-        }
-
-        guard WechatLoginBridge.isWxInstalled() else {
-            presentError("请先安装微信")
             return
         }
 
         cancelLoginFlow()
         loading = true
         let session = loginSession
+        startApiWatchdog(session: session)
+
+        AppleSignInService.shared.signIn { result in
+            Task { @MainActor in
+                stopLoginWatchdog()
+
+                guard session == loginSession else { return }
+
+                switch result {
+                case .failure(let error):
+                    finishLoading()
+                    if let appleError = error as? AppleSignInError, case .cancelled = appleError {
+                        return
+                    }
+                    presentError(error.localizedDescription)
+                case .success(let credential):
+                    startApiWatchdog(session: session)
+                    let loginResult = await ApiService.shared.appleLogin(credential: credential)
+                    stopLoginWatchdog()
+
+                    guard session == loginSession, !Task.isCancelled else { return }
+                    finishLoading()
+
+                    if loginResult.success {
+                        ApiService.shared.token = loginResult.token
+                        onLoginSuccess()
+                    } else {
+                        presentError(loginResult.message)
+                    }
+                }
+            }
+        }
+    }
+
+    private func handleWechatLogin() {
+        guard checked else {
+            presentError("请阅读并同意用户协议和隐私协议")
+            return
+        }
+
+        cancelLoginFlow()
+        loading = true
+        let session = loginSession
+        let useWebSource = !WechatLoginBridge.isWxInstalled()
         startLoginWatchdog(session: session)
 
         WechatLoginBridge.startLogin { code, errCode, errMsg in
@@ -141,12 +196,16 @@ struct LoginScreen: View {
 
                 guard let code, !code.isEmpty else {
                     finishLoading()
+                    if errCode == -2 { return }
                     presentError(errMsg.isEmpty ? "微信登录失败(\(errCode))" : errMsg)
                     return
                 }
 
                 startApiWatchdog(session: session)
-                let result = await ApiService.shared.wxLoginByCode(code: code)
+                let result = await ApiService.shared.wxLoginByCode(
+                    code: code,
+                    source: useWebSource ? "web" : "app"
+                )
                 stopLoginWatchdog()
 
                 guard session == loginSession, !Task.isCancelled else { return }
@@ -177,9 +236,10 @@ struct LoginScreen: View {
         loginTask = nil
         stopLoginWatchdog()
         WechatLoginBridge.cancelPendingLogin()
+        AppleSignInService.shared.cancel()
     }
 
-    /// 等待微信授权回调（跳转微信阶段）
+    /// 等待微信授权回调（跳转微信或网页授权阶段）
     private func startLoginWatchdog(session: Int) {
         loginWatchdog?.cancel()
         loginWatchdog = Task { @MainActor in
@@ -215,5 +275,34 @@ struct LoginScreen: View {
     private func stopLoginWatchdog() {
         loginWatchdog?.cancel()
         loginWatchdog = nil
+    }
+}
+
+private enum LoginButtonMetrics {
+    static let height: CGFloat = 50
+    static let spacing: CGFloat = 12
+}
+
+/// 左右等宽、等高的统一登录按钮（满足 App Store 4.8 同等突出要求）
+private struct SocialLoginButton: View {
+    let title: String
+    let background: Color
+    let foreground: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 16, weight: .medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .foregroundColor(foreground)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .multilineTextAlignment(.center)
+                .background(background)
+                .clipShape(Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }

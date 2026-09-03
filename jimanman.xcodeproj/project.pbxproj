@@ -23,6 +23,7 @@
 		9E294CA5BA4DA5875898DBEB /* ApiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95784DA18BE660972D363AF4 /* ApiService.swift */; };
 		A1B2C3D451111111100000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000001 /* AppDelegate.swift */; };
 		A1B2C3D451111111100000002 /* WechatLoginBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000002 /* WechatLoginBridge.swift */; };
+		C1D2E3F40123456789000001 /* AppleSignInService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F40123456789000002 /* AppleSignInService.swift */; };
 		A1B2C3D451111111100000003 /* WechatOpenSDK-XCFramework.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000003 /* WechatOpenSDK-XCFramework.xcframework */; };
 		A1B2C3D451111111100000004 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000004 /* Security.framework */; };
 		A1B2C3D451111111100000005 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000005 /* SystemConfiguration.framework */; };
@@ -71,6 +72,7 @@
 		9BC94857986CB9DC28EE015C /* ConfirmCloseAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConfirmCloseAccountView.swift; path = jimanman/Views/Profile/ConfirmCloseAccountView.swift; sourceTree = "<group>"; };
 		A1B2C3D441111111100000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = jimanman/AppDelegate.swift; sourceTree = "<group>"; };
 		A1B2C3D441111111100000002 /* WechatLoginBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WechatLoginBridge.swift; path = jimanman/Services/WechatLoginBridge.swift; sourceTree = "<group>"; };
+		C1D2E3F40123456789000002 /* AppleSignInService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppleSignInService.swift; path = jimanman/Services/AppleSignInService.swift; sourceTree = "<group>"; };
 		A1B2C3D441111111100000003 /* WechatOpenSDK-XCFramework.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = "WechatOpenSDK-XCFramework.xcframework"; path = "Vendor/WechatOpenSDK-XCFramework.xcframework"; sourceTree = "<group>"; };
 		A1B2C3D441111111100000004 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		A1B2C3D441111111100000005 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
@@ -152,6 +154,7 @@
 				95784DA18BE660972D363AF4 /* ApiService.swift */,
 				A1B2C3D441111111100000001 /* AppDelegate.swift */,
 				A1B2C3D441111111100000002 /* WechatLoginBridge.swift */,
+				C1D2E3F40123456789000002 /* AppleSignInService.swift */,
 				B2C3D4E40123456789000001 /* AssessmentStore.swift */,
 				B2C3D4E40123456789000002 /* questions.json */,
 				B2C3D4E40123456789000003 /* MathMarkdownView.swift */,
@@ -290,6 +293,7 @@
 				9E294CA5BA4DA5875898DBEB /* ApiService.swift in Sources */,
 				A1B2C3D451111111100000001 /* AppDelegate.swift in Sources */,
 				A1B2C3D451111111100000002 /* WechatLoginBridge.swift in Sources */,
+				C1D2E3F40123456789000001 /* AppleSignInService.swift in Sources */,
 				B2C3D4E50123456789000001 /* AssessmentStore.swift in Sources */,
 				B2C3D4E50123456789000003 /* MathMarkdownView.swift in Sources */,
 				B2C3D4E70123456789000004 /* MarkdownWebViewPool.swift in Sources */,

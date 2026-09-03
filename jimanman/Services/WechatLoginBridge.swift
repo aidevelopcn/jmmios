@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Foundation
 import UIKit
 
@@ -8,6 +9,8 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
     private var loginCallback: ((String?, Int, String) -> Void)?
     private var payCallback: ((Int, String) -> Void)?
     private var deliveredAuthCodes = Set<String>()
+    private var webAuthSession: ASWebAuthenticationSession?
+    private var webAuthContextProvider = WebAuthContextProvider()
 
     private override init() {
         super.init()
@@ -37,11 +40,18 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
 
     static func cancelPendingLogin() {
         shared.loginCallback = nil
+        shared.webAuthSession?.cancel()
+        shared.webAuthSession = nil
     }
 
     static func startLogin(result: @escaping (String?, Int, String) -> Void) {
         shared.deliveredAuthCodes.removeAll()
         shared.loginCallback = result
+
+        if !isWxInstalled() {
+            startWebLogin(result: result)
+            return
+        }
 
         guard let rootVC = topViewController() else {
             result(nil, -1, "无法获取当前页面")
@@ -58,6 +68,66 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
                     shared.loginCallback?(nil, -1, "调起微信失败")
                     shared.loginCallback = nil
                 }
+            }
+        }
+    }
+
+    /// 未安装微信时，通过 ASWebAuthenticationSession 完成网页授权（Guideline 4.2.3）
+    static func startWebLogin(result: @escaping (String?, Int, String) -> Void) {
+        Task { @MainActor in
+            guard let oauthURL = await ApiService.shared.fetchWechatOauthURL() else {
+                result(nil, -1, "无法获取微信登录地址")
+                return
+            }
+
+            shared.webAuthSession?.cancel()
+            let session = ASWebAuthenticationSession(
+                url: oauthURL,
+                callbackURLScheme: ApiConfig.wxWebCallbackScheme
+            ) { callbackURL, error in
+                shared.webAuthSession = nil
+                let callback = shared.loginCallback
+                shared.loginCallback = nil
+
+                if let error = error as? ASWebAuthenticationSessionError,
+                   error.code == .canceledLogin {
+                    DispatchQueue.main.async {
+                        callback?(nil, -2, "用户取消授权")
+                    }
+                    return
+                }
+
+                if let error {
+                    DispatchQueue.main.async {
+                        callback?(nil, -1, error.localizedDescription)
+                    }
+                    return
+                }
+
+                guard let callbackURL,
+                      let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
+                      let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
+                      !code.isEmpty else {
+                    let message = callbackURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?
+                        .queryItems?.first(where: { $0.name == "message" })?.value } ?? "微信授权失败"
+                    DispatchQueue.main.async {
+                        callback?(nil, -1, message)
+                    }
+                    return
+                }
+
+                DispatchQueue.main.async {
+                    callback?(code, 0, "success")
+                }
+            }
+
+            session.presentationContextProvider = shared.webAuthContextProvider
+            session.prefersEphemeralWebBrowserSession = false
+            shared.webAuthSession = session
+
+            if !session.start() {
+                shared.loginCallback = nil
+                result(nil, -1, "无法打开微信登录页面")
             }
         }
     }
@@ -150,5 +220,15 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
             top = presented
         }
         return top
+    }
+}
+
+private final class WebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow }
+        return window ?? ASPresentationAnchor()
     }
 }

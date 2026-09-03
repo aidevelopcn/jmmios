@@ -7,6 +7,8 @@ enum ApiConfig {
     static let wxAppID = "wx25240f7addf5c344"
     /// 微信 Universal Link，需与开放平台及服务器 apple-app-site-association 配置一致
     static let wxUniversalLink = "https://ad.91jmm.com/jimanman/"
+    /// 未安装微信时，网页 OAuth 回调 Scheme（需与后端 wxAuthCallback 一致）
+    static let wxWebCallbackScheme = "com.gaoshub.jimanman"
 }
 
 #if DEBUG

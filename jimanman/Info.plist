@@ -14,6 +14,14 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
+			<string>com.gaoshub.jimanman</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.gaoshub.jimanman</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
 			<string>weixin</string>
 			<key>CFBundleURLSchemes</key>
 			<array>

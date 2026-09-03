@@ -97,7 +97,7 @@ class ApiService: ObservableObject {
     // MARK: - 微信登录
     /// POST /api/user/wxLogin
     /// 微信 code 只能使用一次，禁止自动重试，避免 "code been used"
-    func wxLoginByCode(code: String) async -> LoginResult {
+    func wxLoginByCode(code: String, source: String = "app") async -> LoginResult {
         if wxLoginInFlightCodes.contains(code) {
             return LoginResult(success: false, token: "", message: "登录处理中，请稍候")
         }
@@ -112,7 +112,7 @@ class ApiService: ObservableObject {
         request.httpMethod = "POST"
         request.timeoutInterval = 25
         request.setValue("application/x-www-form-urlencoded; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        let body = "code=\(formURLEncode(code))"
+        let body = "code=\(formURLEncode(code))&source=\(formURLEncode(source))"
         request.httpBody = body.data(using: .utf8)
 
         do {
@@ -145,6 +145,46 @@ class ApiService: ObservableObject {
             }
             return LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
         }
+    }
+
+    /// GET /api/user/wechatOauthUrl
+    func fetchWechatOauthURL() async -> URL? {
+        guard let json = await request(url: "\(baseURL)/api/user/wechatOauthUrl"),
+              let code = jsonIntValue(json["code"]), code == 200,
+              let data = json["data"] as? [String: Any],
+              let urlString = data["url"] as? String,
+              let url = URL(string: urlString) else {
+            return nil
+        }
+        return url
+    }
+
+    /// POST /api/user/appleLogin
+    func appleLogin(credential: AppleSignInCredential) async -> LoginResult {
+        let params: [String: String] = [
+            "identity_token": credential.identityToken,
+            "authorization_code": credential.authorizationCode ?? "",
+            "user_identifier": credential.userIdentifier,
+            "email": credential.email ?? "",
+            "given_name": credential.givenName ?? "",
+            "family_name": credential.familyName ?? "",
+        ]
+
+        guard let json = await postForm(url: "\(baseURL)/api/user/appleLogin", params: params),
+              let statusCode = jsonIntValue(json["code"]) else {
+            return LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
+        }
+
+        if statusCode == 200 {
+            let token = (json["data"] as? [String: Any])?["token"] as? String ?? ""
+            return LoginResult(
+                success: !token.isEmpty,
+                token: token,
+                message: token.isEmpty ? "登录失败：token为空" : "登录成功"
+            )
+        }
+
+        return LoginResult(success: false, token: "", message: json["msg"] as? String ?? "Apple 登录失败")
     }
 
     // MARK: - 获取用户信息
