@@ -147,13 +147,44 @@ class ApiService: ObservableObject {
         }
     }
 
-    /// GET /api/user/wechatOauthUrl
+    /// GET/POST /api/user/wechatOauthUrl（带重试；服务端不可用时返回 nil）
     func fetchWechatOauthURL() async -> URL? {
-        guard let json = await request(url: "\(baseURL)/api/user/wechatOauthUrl"),
-              let code = jsonIntValue(json["code"]), code == 200,
+        for attempt in 0..<3 {
+            if let url = await fetchWechatOauthURLOnce(method: "GET") {
+                return url
+            }
+            if let url = await fetchWechatOauthURLOnce(method: "POST") {
+                return url
+            }
+            if attempt < 2 {
+                try? await Task.sleep(nanoseconds: 800_000_000)
+            }
+        }
+        return nil
+    }
+
+    private func fetchWechatOauthURLOnce(method: String) async -> URL? {
+        let endpoint = "\(baseURL)/api/user/wechatOauthUrl"
+        let json: [String: Any]?
+        if method == "POST" {
+            json = await postForm(url: endpoint, params: [:])
+        } else {
+            json = await request(url: endpoint)
+        }
+        return parseWechatOauthURL(from: json)
+    }
+
+    private func parseWechatOauthURL(from json: [String: Any]?) -> URL? {
+        guard let json,
+              let code = jsonIntValue(json["code"]),
+              code == 200 || code == 0,
               let data = json["data"] as? [String: Any],
               let urlString = data["url"] as? String,
-              let url = URL(string: urlString) else {
+              let url = URL(string: urlString),
+              !urlString.isEmpty else {
+            if let json {
+                print("wechatOauthUrl unexpected response: \(json)")
+            }
             return nil
         }
         return url

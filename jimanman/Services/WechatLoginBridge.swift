@@ -76,7 +76,7 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
     static func startWebLogin(result: @escaping (String?, Int, String) -> Void) {
         Task { @MainActor in
             guard let oauthURL = await ApiService.shared.fetchWechatOauthURL() else {
-                result(nil, -1, "无法获取微信登录地址")
+                result(nil, -1, "微信网页登录暂不可用，请使用 Apple 登录")
                 return
             }
 
@@ -210,12 +210,7 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
     }
 
     private static func topViewController() -> UIViewController? {
-        let window = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first { $0.isKeyWindow }
-
-        var top = window?.rootViewController
+        var top = PresentationAnchor.activeWindow()?.rootViewController
         while let presented = top?.presentedViewController {
             top = presented
         }
@@ -225,10 +220,6 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
 
 private final class WebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        let window = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first { $0.isKeyWindow }
-        return window ?? ASPresentationAnchor()
+        PresentationAnchor.activeWindow() ?? ASPresentationAnchor()
     }
 }

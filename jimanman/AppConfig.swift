@@ -9,6 +9,9 @@ enum ApiConfig {
     static let wxUniversalLink = "https://ad.91jmm.com/jimanman/"
     /// 未安装微信时，网页 OAuth 回调 Scheme（需与后端 wxAuthCallback 一致）
     static let wxWebCallbackScheme = "com.gaoshub.jimanman"
+    /// 网站应用 AppID（网页 OAuth 兜底，与后端 wxmp.production.AppID 一致）
+    static let wxWebAppID = "wxf4107846851b3593"
+    static let wxWebAuthCallback = "https://ad.91jmm.com/api/user/wxAuthCallback"
 }
 
 #if DEBUG

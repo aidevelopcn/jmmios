@@ -37,6 +37,7 @@
 		C20244BC8F9905DEDD999546 /* AssessmentViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE2546C08B29F4C8B58A35CB /* AssessmentViews.swift */; };
 		C2DB4E3BA8A8E4B5537F980A /* ApplyCloseAccountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CBE496CA6541D5229C8D144 /* ApplyCloseAccountView.swift */; };
 		C3E94569BE5CD03E8846EE66 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 549D4BD5BD332E82723B92D8 /* AppConfig.swift */; };
+		D2E3F4A50123456789000001 /* PresentationAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A40123456789000002 /* PresentationAnchor.swift */; };
 		D46749A9B34E5C6E890744EB /* StudentCertificationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B7F42868D7DEC7DAC779724 /* StudentCertificationView.swift */; };
 		E2C040D89554EBFDC2C9062D /* MyCourseWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAC1453BBEDD273D581186ED /* MyCourseWebView.swift */; };
 		E6A34846A89412AAE1707DDD /* RechargeAndOrdersViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 815B4BCA9CAA424E99943A61 /* RechargeAndOrdersViews.swift */; };
@@ -85,6 +86,7 @@
 		AAC1453BBEDD273D581186ED /* MyCourseWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyCourseWebView.swift; path = jimanman/Views/Profile/MyCourseWebView.swift; sourceTree = "<group>"; };
 		AE2546C08B29F4C8B58A35CB /* AssessmentViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssessmentViews.swift; path = jimanman/Views/Assessment/AssessmentViews.swift; sourceTree = "<group>"; };
 		C73142F7A08C798874B490C6 /* ColorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorExtension.swift; path = jimanman/Utils/ColorExtension.swift; sourceTree = "<group>"; };
+		D2E3F4A40123456789000002 /* PresentationAnchor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PresentationAnchor.swift; path = jimanman/Utils/PresentationAnchor.swift; sourceTree = "<group>"; };
 		D551456283418B76960687D4 /* MyAskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyAskListView.swift; path = jimanman/Views/Profile/MyAskListView.swift; sourceTree = "<group>"; };
 		D87240749AD752A6050676E5 /* StudentInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StudentInfoView.swift; path = jimanman/Views/Profile/StudentInfoView.swift; sourceTree = "<group>"; };
 		B2C3D4E40123456789000001 /* AssessmentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssessmentStore.swift; path = jimanman/Services/AssessmentStore.swift; sourceTree = "<group>"; };
@@ -134,6 +136,7 @@
 				04A5FDD42FDDD1F30028CE2E /* Products */,
 				549D4BD5BD332E82723B92D8 /* AppConfig.swift */,
 				C73142F7A08C798874B490C6 /* ColorExtension.swift */,
+				D2E3F4A40123456789000002 /* PresentationAnchor.swift */,
 				55494308B3625CB6AF1EB33A /* Models.swift */,
 				A31547D7BEDC1647FBA3EB29 /* HomeView.swift */,
 				6452478AB169C5B132671EF3 /* AiChatView.swift */,
@@ -273,6 +276,7 @@
 				04A5FDD72FDDD1F30028CE2E /* jimanmanApp.swift in Sources */,
 				C3E94569BE5CD03E8846EE66 /* AppConfig.swift in Sources */,
 				AD39449181ABF1D0C67DAF7A /* ColorExtension.swift in Sources */,
+				D2E3F4A50123456789000001 /* PresentationAnchor.swift in Sources */,
 				A9C54335A5C38BC621B18F09 /* Models.swift in Sources */,
 				92A34BA4BBDC5A76A327BB3C /* HomeView.swift in Sources */,
 				8CF84D699F6DE8E4419A83E0 /* AiChatView.swift in Sources */,
@@ -424,7 +428,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
 				DEVELOPMENT_TEAM = QNC87AZURH;
 				ENABLE_PREVIEWS = YES;
@@ -477,7 +481,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
 				DEVELOPMENT_TEAM = QNC87AZURH;
 				ENABLE_PREVIEWS = YES;

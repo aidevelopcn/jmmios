@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 // MARK: - 登录页面（对齐 Android LoginScreen）
@@ -58,13 +59,16 @@ struct LoginScreen: View {
             GeometryReader { geo in
                 let buttonWidth = (geo.size.width - LoginButtonMetrics.spacing) / 2
                 HStack(spacing: LoginButtonMetrics.spacing) {
-                    SocialLoginButton(
-                        title: "Apple 登录",
-                        background: Color.black,
-                        foreground: .white,
-                        action: handleAppleLogin
-                    )
+                    SignInWithAppleButton(.signIn) { request in
+                        request.requestedScopes = [.fullName, .email]
+                    } onCompletion: { result in
+                        handleAppleSignIn(result)
+                    }
+                    .signInWithAppleButtonStyle(.black)
                     .frame(width: buttonWidth, height: LoginButtonMetrics.height)
+                    .clipShape(Capsule())
+                    .disabled(loading || !checked)
+                    .opacity(loading ? 0.6 : (checked ? 1 : 0.6))
 
                     SocialLoginButton(
                         title: "微信登录",
@@ -132,44 +136,54 @@ struct LoginScreen: View {
         }
     }
 
-    private func handleAppleLogin() {
+    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
         guard checked else {
             presentError("请阅读并同意用户协议和隐私协议")
             return
         }
 
-        cancelLoginFlow()
-        loading = true
-        let session = loginSession
-        startApiWatchdog(session: session)
+        switch result {
+        case .failure(let error):
+            if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+                return
+            }
+            presentError(error.localizedDescription)
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = credential.identityToken,
+                  let identityToken = String(data: tokenData, encoding: .utf8),
+                  !identityToken.isEmpty else {
+                presentError("Apple 登录凭证无效")
+                return
+            }
 
-        AppleSignInService.shared.signIn { result in
-            Task { @MainActor in
+            let authCode = credential.authorizationCode.flatMap { String(data: $0, encoding: .utf8) }
+            let appleCredential = AppleSignInCredential(
+                identityToken: identityToken,
+                authorizationCode: authCode,
+                userIdentifier: credential.user,
+                email: credential.email,
+                givenName: credential.fullName?.givenName,
+                familyName: credential.fullName?.familyName
+            )
+
+            cancelLoginFlow()
+            loading = true
+            let session = loginSession
+            startApiWatchdog(session: session)
+
+            loginTask = Task { @MainActor in
+                let loginResult = await ApiService.shared.appleLogin(credential: appleCredential)
                 stopLoginWatchdog()
 
-                guard session == loginSession else { return }
+                guard session == loginSession, !Task.isCancelled else { return }
+                finishLoading()
 
-                switch result {
-                case .failure(let error):
-                    finishLoading()
-                    if let appleError = error as? AppleSignInError, case .cancelled = appleError {
-                        return
-                    }
-                    presentError(error.localizedDescription)
-                case .success(let credential):
-                    startApiWatchdog(session: session)
-                    let loginResult = await ApiService.shared.appleLogin(credential: credential)
-                    stopLoginWatchdog()
-
-                    guard session == loginSession, !Task.isCancelled else { return }
-                    finishLoading()
-
-                    if loginResult.success {
-                        ApiService.shared.token = loginResult.token
-                        onLoginSuccess()
-                    } else {
-                        presentError(loginResult.message)
-                    }
+                if loginResult.success {
+                    ApiService.shared.token = loginResult.token
+                    onLoginSuccess()
+                } else {
+                    presentError(loginResult.message)
                 }
             }
         }
