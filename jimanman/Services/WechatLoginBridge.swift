@@ -9,6 +9,8 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
     private var loginCallback: ((String?, Int, String) -> Void)?
     private var payCallback: ((Int, String) -> Void)?
     private var deliveredAuthCodes = Set<String>()
+    private var lastHandledOpenURL: String?
+    private var lastHandledOpenTime: Date?
     private var webAuthSession: ASWebAuthenticationSession?
     private var webAuthContextProvider = WebAuthContextProvider()
 
@@ -27,14 +29,74 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
     /// 统一处理 URL Scheme 回调（AppDelegate + SwiftUI 均可调用）
     @discardableResult
     static func handleOpenURL(_ url: URL) -> Bool {
-        WXApi.handleOpen(url, delegate: shared)
+        if shouldSkipDuplicateOpen(url) {
+            return true
+        }
+        if handleWebAuthCallback(url) {
+            return true
+        }
+        return WXApi.handleOpen(url, delegate: shared)
+    }
+
+    /// AppDelegate 与 SwiftUI onOpenURL 可能重复触发，避免微信 SDK 处理两次
+    private static func shouldSkipDuplicateOpen(_ url: URL) -> Bool {
+        let key = url.absoluteString
+        let now = Date()
+        defer {
+            shared.lastHandledOpenURL = key
+            shared.lastHandledOpenTime = now
+        }
+        guard let last = shared.lastHandledOpenURL,
+              let lastTime = shared.lastHandledOpenTime,
+              last == key,
+              now.timeIntervalSince(lastTime) < 2 else {
+            return false
+        }
+        print("WeChat openURL duplicate ignored: \(url.scheme ?? "")")
+        return true
+    }
+
+    /// iPad 网页授权兜底：部分系统上 ASWebAuthenticationSession 未拦截回调时，由 App 打开 URL
+    @discardableResult
+    static func handleWebAuthCallback(_ url: URL) -> Bool {
+        guard url.scheme == ApiConfig.wxWebCallbackScheme,
+              url.host == "wxauth" else { return false }
+
+        let callback = shared.loginCallback
+        shared.loginCallback = nil
+        shared.webAuthSession?.cancel()
+        shared.webAuthSession = nil
+
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            DispatchQueue.main.async {
+                callback?(nil, -1, "微信授权失败")
+            }
+            return true
+        }
+
+        if let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
+           !code.isEmpty {
+            DispatchQueue.main.async {
+                callback?(code, 0, "success")
+            }
+            return true
+        }
+
+        let message = components.queryItems?.first(where: { $0.name == "message" })?.value ?? "微信授权失败"
+        DispatchQueue.main.async {
+            callback?(nil, -1, message)
+        }
+        return true
     }
 
     /// 统一处理 Universal Link 回调
     @discardableResult
     static func handleUniversalLink(_ userActivity: NSUserActivity) -> Bool {
         guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
-              userActivity.webpageURL != nil else { return false }
+              let url = userActivity.webpageURL else { return false }
+        if shouldSkipDuplicateOpen(url) {
+            return true
+        }
         return WXApi.handleOpenUniversalLink(userActivity, delegate: shared)
     }
 
@@ -161,12 +223,11 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
 
     func onResp(_ resp: BaseResp) {
         if let authResp = resp as? SendAuthResp {
-            let callback = loginCallback
-            loginCallback = nil
-
             switch authResp.errCode {
             case WXSuccess.rawValue:
                 guard let code = authResp.code, !code.isEmpty else {
+                    let callback = loginCallback
+                    loginCallback = nil
                     dispatchLogin(callback: callback, code: nil, errCode: -4, errMsg: "微信授权码为空")
                     return
                 }
@@ -176,12 +237,20 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
                     return
                 }
                 deliveredAuthCodes.insert(code)
+                let callback = loginCallback
+                loginCallback = nil
                 dispatchLogin(callback: callback, code: code, errCode: 0, errMsg: "success")
             case WXErrCodeUserCancel.rawValue:
+                let callback = loginCallback
+                loginCallback = nil
                 dispatchLogin(callback: callback, code: nil, errCode: -2, errMsg: "用户取消授权")
             case WXErrCodeAuthDeny.rawValue:
+                let callback = loginCallback
+                loginCallback = nil
                 dispatchLogin(callback: callback, code: nil, errCode: -3, errMsg: "用户拒绝授权")
             default:
+                let callback = loginCallback
+                loginCallback = nil
                 dispatchLogin(callback: callback, code: nil, errCode: Int(authResp.errCode), errMsg: authResp.errStr)
             }
             return

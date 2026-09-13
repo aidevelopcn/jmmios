@@ -5,7 +5,13 @@ class ApiService: ObservableObject {
     static let shared = ApiService()
     private init() {}
 
-    private let session = URLSession.shared
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 25
+        config.timeoutIntervalForResource = 40
+        config.waitsForConnectivity = true
+        return URLSession(configuration: config)
+    }()
     private let baseURL = ApiConfig.baseURL
     private let timeout: TimeInterval = 15
     private var wxLoginInFlightCodes = Set<String>()
@@ -96,7 +102,7 @@ class ApiService: ObservableObject {
     
     // MARK: - 微信登录
     /// POST /api/user/wxLogin
-    /// 微信 code 只能使用一次，禁止自动重试，避免 "code been used"
+    /// 微信 code 只能使用一次；仅对瞬时网络错误自动重试，避免 "code been used"
     func wxLoginByCode(code: String, source: String = "app") async -> LoginResult {
         if wxLoginInFlightCodes.contains(code) {
             return LoginResult(success: false, token: "", message: "登录处理中，请稍候")
@@ -104,6 +110,23 @@ class ApiService: ObservableObject {
         wxLoginInFlightCodes.insert(code)
         defer { wxLoginInFlightCodes.remove(code) }
 
+        var lastResult = LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
+        for attempt in 0..<3 {
+            if Task.isCancelled {
+                return lastResult
+            }
+            if attempt > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 600_000_000)
+            }
+            lastResult = await wxLoginByCodeOnce(code: code, source: source)
+            if lastResult.success || !shouldRetryWxLogin(lastResult) {
+                return lastResult
+            }
+        }
+        return lastResult
+    }
+
+    private func wxLoginByCodeOnce(code: String, source: String) async -> LoginResult {
         guard let url = URL(string: "\(baseURL)/api/user/wxLogin") else {
             return LoginResult(success: false, token: "", message: "网络错误")
         }
@@ -120,6 +143,9 @@ class ApiService: ObservableObject {
             if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
                 let preview = String(data: data.prefix(200), encoding: .utf8) ?? ""
                 print("wxLogin HTTP \(httpResponse.statusCode): \(preview)")
+                if (500...599).contains(httpResponse.statusCode) {
+                    return LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
+                }
             }
             guard !data.isEmpty,
                   let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -140,11 +166,22 @@ class ApiService: ObservableObject {
             return LoginResult(success: false, token: "", message: msg)
         } catch {
             print("wxLogin network error: \(error.localizedDescription)")
-            if (error as NSError).code == NSURLErrorTimedOut {
+            let nsError = error as NSError
+            if nsError.code == NSURLErrorTimedOut {
                 return LoginResult(success: false, token: "", message: "连接服务器超时，请检查网络后重试")
             }
             return LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
         }
+    }
+
+    private func shouldRetryWxLogin(_ result: LoginResult) -> Bool {
+        if result.message.contains("code been used") || result.message.contains("授权已失效") {
+            return false
+        }
+        if result.message.contains("登录失败") && !result.message.contains("网络") && !result.message.contains("超时") {
+            return false
+        }
+        return result.message.contains("网络") || result.message.contains("超时") || result.message.contains("处理中")
     }
 
     /// GET/POST /api/user/wechatOauthUrl（带重试；服务端不可用时返回 nil）

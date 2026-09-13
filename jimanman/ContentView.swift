@@ -99,6 +99,7 @@ struct ContentView: View {
                                 onOpenAssessment: { showAssessment = true },
                                 onOpenAiChat: { selectedTab = 1 },
                                 onOpenCourse: {
+                                    guard AppFeatures.showExternalCourses else { return }
                                     if !MyCourseOpener.openInExternalBrowser() {
                                         showOpenCourseError = true
                                     }

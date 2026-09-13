@@ -16,7 +16,7 @@ SKU=jimanman-ios
 [URL]
 隐私政策=https://ad.91jmm.com/api/article/ysxy
 用户协议=https://ad.91jmm.com/api/article/user
-技术支持=https://ad.91jmm.com/api/article/user
+技术支持=https://ad.91jmm.com/api/article/support
 营销网址=https://ad.91jmm.com
 
 [关键词]
@@ -32,14 +32,13 @@ SKU=jimanman-ios
 • AI 答疑：拍照或输入题目，获取 AI 学习辅导
 • GPA 计算：支持多种绩点算法，快速估算成绩
 • 学习能力测试：多维度测评并生成报告
-• 我的课程：查看已购课程（跳转浏览器）
-• 个人中心：管理账号、答疑记录、会员与订单
+• 个人中心：管理账号与答疑记录
 
 【适用人群】
 在校大学生、考研备考学生及有绩点提升需求的用户。
 
 【登录方式】
-支持微信授权登录。
+支持 Sign in with Apple 与微信登录。
 
 【联系我们】
 客服 QQ：942210353
@@ -64,12 +63,13 @@ Bundle ID=com.gaoshub.jimanman
 公钥模数HEX=0095051a15d787615d3f5e03e545c7d38d95aa43e5e0e68e4bcdd730a044290e6b6782b80e6c59f8a4378ef0bc6501fcd6329a772f8f135ca2330c9ef6b021ca21ce6b2fb03cc0d322fac15c7e6a740e44283f44d93d74374105bbd5fdefd53344406212a7bf2262712d41014c3d59a02ae3d1ce243c5aae2dcc40a404a6c779a249e7104ca7c211a1d10c57e56f834a03cc8171a22e61346449375f9dcee53c77f6ccea46457a22b27b8f70ce8baca678f28e93a3e826411e309c69752b1afdccff47fd077bea56b1d9b60c261b410aa38600495138a6c6664c64922095783b6559a6bbde8f67f62a4a85739a5500a483351f8dda7f3422166c6e94178e48fdaf
 
 [审核备注-模板]
-测试账号：（待填写）
-1. 微信登录：我的 → 登录 → 微信授权
+Build 12 审核说明：
+1. 登录：我的 → 登录 → 先勾选用户协议 → 推荐使用「通过 Apple 登录」（iPad 未安装微信时请务必使用 Apple 登录）
 2. AI 答疑：答疑 Tab → 输入或拍照
 3. GPA：首页 → GPA 计算
 4. 测评：首页 → 学习能力测试
-5. 我的课程：跳转 Safari 打开外部课程页
+5. iOS 版已移除会员、储值及外部课程入口，不涉及应用内购买数字内容
+6. 技术支持 URL 已更新为：https://ad.91jmm.com/api/article/support
 
 [公司信息]
 公司名称=天津考星科技有限公司

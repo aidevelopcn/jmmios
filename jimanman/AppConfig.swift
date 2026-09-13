@@ -26,8 +26,15 @@ enum DebugLoginConfig {
 enum AppFeatures {
     /// iOS App Store 版隐藏会员/储值相关入口，避免 Guideline 3.1.1
     static let showMembership = false
+    /// 隐藏外部小鹅通课程入口，避免 Guideline 3.1.1
+    static let showExternalCourses = false
 
     static var showRecharge: Bool { showMembership }
+}
+
+/// App Store Connect 元数据 URL
+enum AppStoreURL {
+    static let support = "https://ad.91jmm.com/api/article/support"
 }
 
 /// 用户协议链接

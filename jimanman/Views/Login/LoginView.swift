@@ -1,5 +1,6 @@
 import AuthenticationServices
 import SwiftUI
+import UIKit
 
 // MARK: - 登录页面（对齐 Android LoginScreen）
 struct LoginScreen: View {
@@ -13,6 +14,12 @@ struct LoginScreen: View {
     @State private var loginWatchdog: Task<Void, Never>?
     @State private var loginTask: Task<Void, Never>?
     @State private var loginSession = 0
+    @State private var processedWxCodes = Set<String>()
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var useStackedLoginButtons: Bool {
+        horizontalSizeClass == .regular
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -49,40 +56,43 @@ struct LoginScreen: View {
         } message: {
             Text(errorMessage)
         }
-        .onDisappear {
-            cancelLoginFlow()
-        }
     }
 
     private var loginControls: some View {
         VStack(spacing: 0) {
-            GeometryReader { geo in
-                let buttonWidth = (geo.size.width - LoginButtonMetrics.spacing) / 2
-                HStack(spacing: LoginButtonMetrics.spacing) {
-                    SignInWithAppleButton(.signIn) { request in
-                        request.requestedScopes = [.fullName, .email]
-                    } onCompletion: { result in
-                        handleAppleSignIn(result)
-                    }
-                    .signInWithAppleButtonStyle(.black)
-                    .frame(width: buttonWidth, height: LoginButtonMetrics.height)
-                    .clipShape(Capsule())
-                    .disabled(loading || !checked)
-                    .opacity(loading ? 0.6 : (checked ? 1 : 0.6))
-
-                    SocialLoginButton(
-                        title: "微信登录",
-                        background: Color(hex: "07C160"),
-                        foreground: .white,
-                        action: handleWechatLogin
-                    )
-                    .frame(width: buttonWidth, height: LoginButtonMetrics.height)
-                }
-                .frame(width: geo.size.width, height: LoginButtonMetrics.height)
+            if !checked {
+                Text("请先勾选下方用户协议后再登录")
+                    .font(.system(size: 13))
+                    .foregroundColor(Color.white.opacity(0.92))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.35))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.bottom, 12)
             }
-            .frame(height: LoginButtonMetrics.height)
+
+            Group {
+                if useStackedLoginButtons {
+                    VStack(spacing: LoginButtonMetrics.spacing) {
+                        appleSignInButton
+                            .frame(maxWidth: .infinity)
+                            .frame(height: LoginButtonMetrics.height)
+                        wechatLoginButton
+                            .frame(maxWidth: .infinity)
+                            .frame(height: LoginButtonMetrics.height)
+                    }
+                } else {
+                    HStack(spacing: LoginButtonMetrics.spacing) {
+                        appleSignInButton
+                            .frame(maxWidth: .infinity)
+                            .frame(height: LoginButtonMetrics.height)
+                        wechatLoginButton
+                            .frame(maxWidth: .infinity)
+                            .frame(height: LoginButtonMetrics.height)
+                    }
+                }
+            }
             .disabled(loading)
-            .opacity(loading ? 0.6 : (checked ? 1 : 0.6))
 
             Spacer().frame(height: 16)
 
@@ -111,7 +121,7 @@ struct LoginScreen: View {
 
             Spacer().frame(height: 20)
 
-            Button(action: onBack) {
+            Button(action: handleBack) {
                 Text("返回")
                     .font(.system(size: 14))
                     .foregroundColor(AppColors.primary)
@@ -119,6 +129,26 @@ struct LoginScreen: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 24)
+    }
+
+    private var appleSignInButton: some View {
+        SignInWithAppleButton(.signIn) { request in
+            request.requestedScopes = [.fullName, .email]
+        } onCompletion: { result in
+            handleAppleSignIn(result)
+        }
+        .signInWithAppleButtonStyle(.black)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var wechatLoginButton: some View {
+        SocialLoginButton(
+            title: "微信登录",
+            background: Color(hex: "07C160"),
+            foreground: .white,
+            action: handleWechatLogin
+        )
+        .opacity(checked ? 1 : 0.55)
     }
 
     private var agreementText: some View {
@@ -189,6 +219,11 @@ struct LoginScreen: View {
         }
     }
 
+    private func handleBack() {
+        cancelLoginFlow()
+        onBack()
+    }
+
     private func handleWechatLogin() {
         guard checked else {
             presentError("请阅读并同意用户协议和隐私协议")
@@ -196,13 +231,13 @@ struct LoginScreen: View {
         }
 
         cancelLoginFlow()
+        processedWxCodes.removeAll()
         loading = true
         let session = loginSession
         let useWebSource = !WechatLoginBridge.isWxInstalled()
         startLoginWatchdog(session: session)
 
         WechatLoginBridge.startLogin { code, errCode, errMsg in
-            loginTask?.cancel()
             loginTask = Task { @MainActor in
                 stopLoginWatchdog()
 
@@ -215,6 +250,10 @@ struct LoginScreen: View {
                     return
                 }
 
+                guard !processedWxCodes.contains(code) else { return }
+                processedWxCodes.insert(code)
+
+                await waitUntilAppActive()
                 startApiWatchdog(session: session)
                 let result = await ApiService.shared.wxLoginByCode(
                     code: code,
@@ -231,6 +270,23 @@ struct LoginScreen: View {
                 } else {
                     presentError(result.message)
                 }
+            }
+        }
+    }
+
+    /// 从微信切回 App 后，等待前台网络就绪再请求登录接口
+    @MainActor
+    private func waitUntilAppActive() async {
+        if UIApplication.shared.applicationState == .active {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            return
+        }
+        for _ in 0..<30 {
+            if Task.isCancelled { return }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            if UIApplication.shared.applicationState == .active {
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                return
             }
         }
     }

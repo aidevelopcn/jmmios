@@ -79,7 +79,9 @@ struct HomeView: View {
             HomeMenuItem(iconName: "ic_nav_ai", title: "快速答疑", action: onOpenAiChat)
             HomeMenuItem(iconName: "ic_nav_gpa", title: "GPA计算", action: onOpenGpa)
             HomeMenuItem(iconName: "ic_nav_assessment", title: "学习能力测试", action: onOpenAssessment)
-            HomeMenuItem(iconName: "ic_nav_course", title: "我的课程", action: onOpenCourse)
+            if AppFeatures.showExternalCourses {
+                HomeMenuItem(iconName: "ic_nav_course", title: "我的课程", action: onOpenCourse)
+            }
         }
         .padding(.vertical, 16)
         .padding(.horizontal, 6)
