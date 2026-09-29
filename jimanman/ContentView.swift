@@ -113,7 +113,7 @@ struct ContentView: View {
                         default:
                             MyView(
                                 onNeedLogin: { showLogin = true },
-                                onOpenMyAsk: { profileRoute = .myAsk },
+                                onOpenMyAsk: { selectedTab = 1 },
                                 onOpenAssessment: { showAssessment = true },
                                 onOpenVip: { profileRoute = .vipCenter },
                                 onOpenAccount: { profileRoute = .account },

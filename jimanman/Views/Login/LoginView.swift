@@ -1,25 +1,32 @@
-import AuthenticationServices
 import SwiftUI
 import UIKit
 
-// MARK: - 登录页面（对齐 Android LoginScreen）
+// MARK: - 登录 / 注册（手机号 + 验证码 / 密码）
 struct LoginScreen: View {
     let onBack: () -> Void
     let onLoginSuccess: () -> Void
 
+    private enum Mode {
+        case login
+        case register
+    }
+
+    private enum LoginWay {
+        case code
+        case password
+    }
+
+    @State private var mode: Mode = .login
+    @State private var loginWay: LoginWay = .code
+    @State private var phone = ""
+    @State private var verifyCode = ""
+    @State private var password = ""
     @State private var checked = false
     @State private var loading = false
     @State private var showError = false
     @State private var errorMessage = ""
-    @State private var loginWatchdog: Task<Void, Never>?
-    @State private var loginTask: Task<Void, Never>?
-    @State private var loginSession = 0
-    @State private var processedWxCodes = Set<String>()
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
-    private var useStackedLoginButtons: Bool {
-        horizontalSizeClass == .regular
-    }
+    @State private var countdown = 0
+    @State private var countdownTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { proxy in
@@ -29,20 +36,19 @@ struct LoginScreen: View {
                     .scaledToFill()
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
+                    .onTapGesture { hideKeyboard() }
 
-                VStack(spacing: 0) {
+                VStack {
                     Spacer(minLength: 0)
-
-                    loginControls
+                    formCard
                         .frame(maxWidth: 420)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, max(proxy.safeAreaInsets.bottom + 16, 32))
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, max(proxy.safeAreaInsets.bottom + 16, 28))
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
 
                 if loading {
-                    Color.black.opacity(0.33)
-                        .ignoresSafeArea()
+                    Color.black.opacity(0.33).ignoresSafeArea()
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .scaleEffect(1.2)
@@ -56,47 +62,62 @@ struct LoginScreen: View {
         } message: {
             Text(errorMessage)
         }
+        .onDisappear {
+            countdownTask?.cancel()
+        }
     }
 
-    private var loginControls: some View {
-        VStack(spacing: 0) {
-            if !checked {
-                Text("请先勾选下方用户协议后再登录")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color.white.opacity(0.92))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.black.opacity(0.35))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(.bottom, 12)
+    private var formCard: some View {
+        VStack(spacing: 14) {
+            Text(mode == .login ? "登录绩满满" : "注册账号")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(AppColors.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if mode == .login {
+                HStack(spacing: 0) {
+                    wayTab("验证码登录", selected: loginWay == .code) { loginWay = .code }
+                    wayTab("密码登录", selected: loginWay == .password) { loginWay = .password }
+                }
+                .background(Color(hex: "F3F4F6"))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
-            Group {
-                if useStackedLoginButtons {
-                    VStack(spacing: LoginButtonMetrics.spacing) {
-                        appleSignInButton
-                            .frame(maxWidth: .infinity)
-                            .frame(height: LoginButtonMetrics.height)
-                        wechatLoginButton
-                            .frame(maxWidth: .infinity)
-                            .frame(height: LoginButtonMetrics.height)
+            fieldRow {
+                TextField("请输入手机号", text: $phone)
+                    .keyboardType(.numberPad)
+                    .textContentType(.telephoneNumber)
+            }
+
+            if mode == .register || loginWay == .code {
+                HStack(spacing: 8) {
+                    fieldRow {
+                        TextField("请输入验证码", text: $verifyCode)
+                            .keyboardType(.numberPad)
+                            .textContentType(.oneTimeCode)
                     }
-                } else {
-                    HStack(spacing: LoginButtonMetrics.spacing) {
-                        appleSignInButton
-                            .frame(maxWidth: .infinity)
-                            .frame(height: LoginButtonMetrics.height)
-                        wechatLoginButton
-                            .frame(maxWidth: .infinity)
-                            .frame(height: LoginButtonMetrics.height)
+                    Button(action: sendCode) {
+                        Text(countdown > 0 ? "\(countdown)s" : "获取验证码")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(countdown > 0 ? AppColors.textMuted : .white)
+                            .padding(.horizontal, 10)
+                            .frame(height: 44)
+                            .background(countdown > 0 ? Color(hex: "E5E7EB") : AppColors.primary)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
+                    .disabled(countdown > 0 || loading)
+                    .buttonStyle(.plain)
                 }
             }
-            .disabled(loading)
 
-            Spacer().frame(height: 16)
+            if mode == .register || loginWay == .password {
+                fieldRow {
+                    SecureField(mode == .register ? "设置密码（6-32位）" : "请输入密码", text: $password)
+                        .textContentType(mode == .register ? .newPassword : .password)
+                }
+            }
 
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 Button(action: { checked.toggle() }) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 4)
@@ -117,38 +138,64 @@ struct LoginScreen: View {
 
                 agreementText
             }
-            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer().frame(height: 20)
+            Button(action: submit) {
+                Text(mode == .login ? "登录" : "注册")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(AppColors.primary)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(loading)
 
-            Button(action: handleBack) {
+            Button(action: switchMode) {
+                Text(mode == .login ? "没有账号？立即注册" : "已有账号？去登录")
+                    .font(.system(size: 14))
+                    .foregroundColor(AppColors.primary)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onBack) {
                 Text("返回")
                     .font(.system(size: 14))
                     .foregroundColor(AppColors.primary)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 24)
+        .padding(18)
+        .background(Color.white.opacity(0.96))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    private var appleSignInButton: some View {
-        SignInWithAppleButton(.signIn) { request in
-            request.requestedScopes = [.fullName, .email]
-        } onCompletion: { result in
-            handleAppleSignIn(result)
+    private func wayTab(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14, weight: selected ? .medium : .regular))
+                .foregroundColor(selected ? .white : AppColors.textSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(selected ? AppColors.primary : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
-        .signInWithAppleButtonStyle(.black)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .buttonStyle(.plain)
     }
 
-    private var wechatLoginButton: some View {
-        SocialLoginButton(
-            title: "微信登录",
-            background: Color(hex: "07C160"),
-            foreground: .white,
-            action: handleWechatLogin
-        )
-        .opacity(checked ? 1 : 0.55)
+    private func fieldRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .font(.system(size: 15))
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            .background(Color(hex: "F8FAFB"))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(hex: "E5E7EB"), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8)
+            )
     }
 
     private var agreementText: some View {
@@ -164,129 +211,104 @@ struct LoginScreen: View {
             Link("《隐私协议》", destination: URL(string: AgreementURL.privacyPolicy)!)
                 .font(.system(size: 13))
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
-        guard checked else {
-            presentError("请阅读并同意用户协议和隐私协议")
+    private func switchMode() {
+        mode = mode == .login ? .register : .login
+        verifyCode = ""
+        password = ""
+    }
+
+    private func sendCode() {
+        let trimmed = phone.trimmingCharacters(in: .whitespaces)
+        guard trimmed.range(of: "^1[3-9]\\d{9}$", options: .regularExpression) != nil else {
+            presentError("请输入正确的手机号")
             return
         }
-
-        switch result {
-        case .failure(let error):
-            if let authError = error as? ASAuthorizationError, authError.code == .canceled {
-                return
-            }
-            presentError(error.localizedDescription)
-        case .success(let authorization):
-            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
-                  let tokenData = credential.identityToken,
-                  let identityToken = String(data: tokenData, encoding: .utf8),
-                  !identityToken.isEmpty else {
-                presentError("Apple 登录凭证无效")
-                return
-            }
-
-            let authCode = credential.authorizationCode.flatMap { String(data: $0, encoding: .utf8) }
-            let appleCredential = AppleSignInCredential(
-                identityToken: identityToken,
-                authorizationCode: authCode,
-                userIdentifier: credential.user,
-                email: credential.email,
-                givenName: credential.fullName?.givenName,
-                familyName: credential.fullName?.familyName
-            )
-
-            cancelLoginFlow()
-            loading = true
-            let session = loginSession
-            startApiWatchdog(session: session)
-
-            loginTask = Task { @MainActor in
-                let loginResult = await ApiService.shared.appleLogin(credential: appleCredential)
-                stopLoginWatchdog()
-
-                guard session == loginSession, !Task.isCancelled else { return }
-                finishLoading()
-
-                if loginResult.success {
-                    ApiService.shared.token = loginResult.token
-                    onLoginSuccess()
-                } else {
-                    presentError(loginResult.message)
-                }
-            }
-        }
-    }
-
-    private func handleBack() {
-        cancelLoginFlow()
-        onBack()
-    }
-
-    private func handleWechatLogin() {
-        guard checked else {
-            presentError("请阅读并同意用户协议和隐私协议")
-            return
-        }
-
-        cancelLoginFlow()
-        processedWxCodes.removeAll()
+        let type = mode == .register ? "member_register" : "member_phone_login"
         loading = true
-        let session = loginSession
-        let useWebSource = !WechatLoginBridge.isWxInstalled()
-        startLoginWatchdog(session: session)
+        Task { @MainActor in
+            let result = await ApiService.shared.sendVerifyCode(phone: trimmed, type: type)
+            loading = false
+            if result.success {
+                startCountdown()
+            } else {
+                presentError(result.message)
+            }
+        }
+    }
 
-        WechatLoginBridge.startLogin { code, errCode, errMsg in
-            loginTask = Task { @MainActor in
-                stopLoginWatchdog()
+    private func startCountdown() {
+        countdownTask?.cancel()
+        countdown = 60
+        countdownTask = Task { @MainActor in
+            while countdown > 0, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { return }
+                countdown -= 1
+            }
+        }
+    }
 
-                guard session == loginSession else { return }
+    private func submit() {
+        guard checked else {
+            presentError("请阅读并同意用户协议和隐私协议")
+            return
+        }
+        let trimmedPhone = phone.trimmingCharacters(in: .whitespaces)
+        guard trimmedPhone.range(of: "^1[3-9]\\d{9}$", options: .regularExpression) != nil else {
+            presentError("请输入正确的手机号")
+            return
+        }
 
-                guard let code, !code.isEmpty else {
-                    finishLoading()
-                    if errCode == -2 { return }
-                    presentError(errMsg.isEmpty ? "微信登录失败(\(errCode))" : errMsg)
+        loading = true
+        Task { @MainActor in
+            let result: LoginResult
+            if mode == .register {
+                if verifyCode.trimmingCharacters(in: .whitespaces).isEmpty {
+                    loading = false
+                    presentError("请输入验证码")
                     return
                 }
-
-                guard !processedWxCodes.contains(code) else { return }
-                processedWxCodes.insert(code)
-
-                await waitUntilAppActive()
-                startApiWatchdog(session: session)
-                let result = await ApiService.shared.wxLoginByCode(
-                    code: code,
-                    source: useWebSource ? "web" : "app"
-                )
-                stopLoginWatchdog()
-
-                guard session == loginSession, !Task.isCancelled else { return }
-                finishLoading()
-
-                if result.success {
-                    ApiService.shared.token = result.token
-                    onLoginSuccess()
-                } else {
-                    presentError(result.message)
+                if password.count < 6 || password.count > 32 {
+                    loading = false
+                    presentError("密码长度需为 6-32 位")
+                    return
                 }
+                result = await ApiService.shared.phoneRegister(
+                    phone: trimmedPhone,
+                    verifyCode: verifyCode.trimmingCharacters(in: .whitespaces),
+                    password: password
+                )
+            } else if loginWay == .code {
+                if verifyCode.trimmingCharacters(in: .whitespaces).isEmpty {
+                    loading = false
+                    presentError("请输入验证码")
+                    return
+                }
+                result = await ApiService.shared.phoneLogin(
+                    phone: trimmedPhone,
+                    verifyCode: verifyCode.trimmingCharacters(in: .whitespaces)
+                )
+            } else {
+                if password.isEmpty {
+                    loading = false
+                    presentError("请输入密码")
+                    return
+                }
+                result = await ApiService.shared.phoneLogin(
+                    phone: trimmedPhone,
+                    password: password
+                )
             }
-        }
-    }
 
-    /// 从微信切回 App 后，等待前台网络就绪再请求登录接口
-    @MainActor
-    private func waitUntilAppActive() async {
-        if UIApplication.shared.applicationState == .active {
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            return
-        }
-        for _ in 0..<30 {
-            if Task.isCancelled { return }
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            if UIApplication.shared.applicationState == .active {
-                try? await Task.sleep(nanoseconds: 400_000_000)
-                return
+            loading = false
+            if result.success {
+                ApiService.shared.token = result.token
+                onLoginSuccess()
+            } else {
+                presentError(result.message)
             }
         }
     }
@@ -296,83 +318,7 @@ struct LoginScreen: View {
         showError = true
     }
 
-    private func finishLoading() {
-        loading = false
-    }
-
-    private func cancelLoginFlow() {
-        loginSession += 1
-        loginTask?.cancel()
-        loginTask = nil
-        stopLoginWatchdog()
-        WechatLoginBridge.cancelPendingLogin()
-        AppleSignInService.shared.cancel()
-    }
-
-    /// 等待微信授权回调（跳转微信或网页授权阶段）
-    private func startLoginWatchdog(session: Int) {
-        loginWatchdog?.cancel()
-        loginWatchdog = Task { @MainActor in
-            do {
-                try await Task.sleep(nanoseconds: 90_000_000_000)
-            } catch {
-                return
-            }
-            guard session == loginSession, !Task.isCancelled, loading else { return }
-            cancelLoginFlow()
-            finishLoading()
-            presentError("微信登录超时，请重试")
-        }
-    }
-
-    /// 等待服务端登录接口（网络阶段）
-    private func startApiWatchdog(session: Int) {
-        loginWatchdog?.cancel()
-        loginWatchdog = Task { @MainActor in
-            do {
-                try await Task.sleep(nanoseconds: 35_000_000_000)
-            } catch {
-                return
-            }
-            guard session == loginSession, !Task.isCancelled, loading else { return }
-            loginTask?.cancel()
-            cancelLoginFlow()
-            finishLoading()
-            presentError("连接服务器超时，请检查网络后重试")
-        }
-    }
-
-    private func stopLoginWatchdog() {
-        loginWatchdog?.cancel()
-        loginWatchdog = nil
-    }
-}
-
-private enum LoginButtonMetrics {
-    static let height: CGFloat = 50
-    static let spacing: CGFloat = 12
-}
-
-/// 左右等宽、等高的统一登录按钮（满足 App Store 4.8 同等突出要求）
-private struct SocialLoginButton: View {
-    let title: String
-    let background: Color
-    let foreground: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 16, weight: .medium))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .foregroundColor(foreground)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .multilineTextAlignment(.center)
-                .background(background)
-                .clipShape(Capsule())
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }

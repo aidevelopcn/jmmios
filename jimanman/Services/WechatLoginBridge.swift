@@ -110,8 +110,10 @@ final class WechatLoginBridge: NSObject, WXApiDelegate {
         shared.deliveredAuthCodes.removeAll()
         shared.loginCallback = result
 
-        if !isWxInstalled() {
-            startWebLogin(result: result)
+        // Guideline 4.2.3(i): never send users to install WeChat.
+        // Native WeChat login only when the WeChat app is already installed.
+        guard isWxInstalled() else {
+            result(nil, -1, "请使用 Apple 登录")
             return
         }
 

@@ -29,12 +29,16 @@ enum AppFeatures {
     /// 隐藏外部小鹅通课程入口，避免 Guideline 3.1.1
     static let showExternalCourses = false
 
+    /// iOS 暂隐藏微信/Apple 登录，改用手机号登录（不影响 Android 微信登录接口）
+    static let showWechatLogin = false
+    static let showAppleLogin = false
+
     static var showRecharge: Bool { showMembership }
 }
 
 /// App Store Connect 元数据 URL
 enum AppStoreURL {
-    static let support = "https://ad.91jmm.com/api/article/support"
+    static let support = "https://ad.91jmm.com/support.html"
 }
 
 /// 用户协议链接

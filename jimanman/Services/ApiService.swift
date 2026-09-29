@@ -229,6 +229,27 @@ class ApiService: ObservableObject {
 
     /// POST /api/user/appleLogin
     func appleLogin(credential: AppleSignInCredential) async -> LoginResult {
+        var lastResult = LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
+        for attempt in 0..<3 {
+            if Task.isCancelled {
+                return lastResult
+            }
+            if attempt > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 800_000_000)
+            }
+            lastResult = await appleLoginOnce(credential: credential)
+            if lastResult.success {
+                return lastResult
+            }
+            let retryable = lastResult.message.contains("网络") || lastResult.message.contains("超时")
+            if !retryable {
+                return lastResult
+            }
+        }
+        return lastResult
+    }
+
+    private func appleLoginOnce(credential: AppleSignInCredential) async -> LoginResult {
         let params: [String: String] = [
             "identity_token": credential.identityToken,
             "authorization_code": credential.authorizationCode ?? "",
@@ -238,21 +259,95 @@ class ApiService: ObservableObject {
             "family_name": credential.familyName ?? "",
         ]
 
-        guard let json = await postForm(url: "\(baseURL)/api/user/appleLogin", params: params),
-              let statusCode = jsonIntValue(json["code"]) else {
+        guard let url = URL(string: "\(baseURL)/api/user/appleLogin") else {
             return LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
         }
 
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 40
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: params)
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
+                let preview = String(data: data.prefix(200), encoding: .utf8) ?? ""
+                print("appleLogin HTTP \(httpResponse.statusCode): \(preview)")
+            }
+            guard !data.isEmpty,
+                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let statusCode = jsonIntValue(json["code"]) else {
+                return LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
+            }
+
+            if statusCode == 200 {
+                let token = (json["data"] as? [String: Any])?["token"] as? String ?? ""
+                return LoginResult(
+                    success: !token.isEmpty,
+                    token: token,
+                    message: token.isEmpty ? "登录失败：token为空" : "登录成功"
+                )
+            }
+
+            return LoginResult(success: false, token: "", message: json["msg"] as? String ?? "Apple 登录失败")
+        } catch {
+            print("appleLogin network error: \(error.localizedDescription)")
+            let nsError = error as NSError
+            if nsError.code == NSURLErrorTimedOut {
+                return LoginResult(success: false, token: "", message: "连接服务器超时，请检查网络后重试")
+            }
+            return LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
+        }
+    }
+
+    /// POST /api/user/sendVerifyCode
+    func sendVerifyCode(phone: String, type: String) async -> (success: Bool, message: String) {
+        guard let json = await postForm(url: "\(baseURL)/api/user/sendVerifyCode", params: [
+            "phone": phone,
+            "type": type
+        ]), let statusCode = jsonIntValue(json["code"]) else {
+            return (false, "网络错误，请稍后重试")
+        }
+        if statusCode == 200 {
+            return (true, json["msg"] as? String ?? "验证码已发送")
+        }
+        return (false, json["msg"] as? String ?? "发送失败")
+    }
+
+    /// POST /api/user/phoneLogin
+    func phoneLogin(phone: String, password: String = "", verifyCode: String = "") async -> LoginResult {
+        var params = ["phone": phone]
+        if !verifyCode.isEmpty {
+            params["verify_code"] = verifyCode
+        } else {
+            params["password"] = password
+        }
+        return parseLoginJSON(await postForm(url: "\(baseURL)/api/user/phoneLogin", params: params))
+    }
+
+    /// POST /api/user/phoneRegister
+    func phoneRegister(phone: String, verifyCode: String, password: String) async -> LoginResult {
+        parseLoginJSON(await postForm(url: "\(baseURL)/api/user/phoneRegister", params: [
+            "phone": phone,
+            "verify_code": verifyCode,
+            "password": password
+        ]))
+    }
+
+    private func parseLoginJSON(_ json: [String: Any]?) -> LoginResult {
+        guard let json, let statusCode = jsonIntValue(json["code"]) else {
+            return LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
+        }
         if statusCode == 200 {
             let token = (json["data"] as? [String: Any])?["token"] as? String ?? ""
             return LoginResult(
                 success: !token.isEmpty,
                 token: token,
-                message: token.isEmpty ? "登录失败：token为空" : "登录成功"
+                message: token.isEmpty ? "登录失败：token为空" : (json["msg"] as? String ?? "登录成功")
             )
         }
-
-        return LoginResult(success: false, token: "", message: json["msg"] as? String ?? "Apple 登录失败")
+        return LoginResult(success: false, token: "", message: json["msg"] as? String ?? "登录失败")
     }
 
     // MARK: - 获取用户信息
