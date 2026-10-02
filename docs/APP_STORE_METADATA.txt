@@ -16,7 +16,7 @@ SKU=jimanman-ios
 [URL]
 隐私政策=https://ad.91jmm.com/api/article/ysxy
 用户协议=https://ad.91jmm.com/api/article/user
-技术支持=https://ad.91jmm.com/support.html
+技术支持=https://www.91jmm.com/
 营销网址=https://ad.91jmm.com
 
 [关键词]
@@ -70,7 +70,7 @@ Build 12 审核说明：
 3. GPA：首页 → GPA 计算
 4. 测评：首页 → 学习能力测试
 5. iOS 版已移除会员、储值及外部课程入口，不涉及应用内购买数字内容
-6. 技术支持 URL 已更新为：https://ad.91jmm.com/support.html
+6. 技术支持 URL 已更新为：https://www.91jmm.com/
 
 [公司信息]
 公司名称=天津考星科技有限公司

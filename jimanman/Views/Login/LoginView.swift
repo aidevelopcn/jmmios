@@ -12,12 +12,12 @@ struct LoginScreen: View {
     }
 
     private enum LoginWay {
-        case code
         case password
+        case code
     }
 
     @State private var mode: Mode = .login
-    @State private var loginWay: LoginWay = .code
+    @State private var loginWay: LoginWay = .password
     @State private var phone = ""
     @State private var verifyCode = ""
     @State private var password = ""
@@ -27,93 +27,131 @@ struct LoginScreen: View {
     @State private var errorMessage = ""
     @State private var countdown = 0
     @State private var countdownTask: Task<Void, Never>?
+    @FocusState private var focusedField: LoginField?
+
+    private enum LoginField {
+        case phone, code, password
+    }
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                Image("login_bg")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-                    .onTapGesture { hideKeyboard() }
+        ZStack {
+            AppColors.background
+                .ignoresSafeArea()
+                .onTapGesture { hideKeyboard() }
 
-                VStack {
-                    Spacer(minLength: 0)
+            VStack(spacing: 0) {
+                header
+                ScrollView(showsIndicators: false) {
                     formCard
-                        .frame(maxWidth: 420)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, max(proxy.safeAreaInsets.bottom + 16, 28))
+                        .padding(.horizontal, 24)
+                        .padding(.top, 24)
+                        .padding(.bottom, 20)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
-
-                if loading {
-                    Color.black.opacity(0.33).ignoresSafeArea()
+            }
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .overlay {
+            if loading {
+                ZStack {
+                    Color.black.opacity(0.28).ignoresSafeArea()
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .scaleEffect(1.2)
                 }
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .ignoresSafeArea()
         .alert("提示", isPresented: $showError) {
             Button("确定") {}
         } message: {
             Text(errorMessage)
+        }
+        .onChange(of: loginWay) { _ in
+            verifyCode = ""
+            password = ""
         }
         .onDisappear {
             countdownTask?.cancel()
         }
     }
 
-    private var formCard: some View {
-        VStack(spacing: 14) {
-            Text(mode == .login ? "登录绩满满" : "注册账号")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(AppColors.textPrimary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var header: some View {
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [AppColors.primaryDark, AppColors.primary, AppColors.primaryLight],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea(edges: .top)
 
+            VStack(alignment: .leading, spacing: 8) {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 36, height: 36)
+                        .background(Color.white.opacity(0.18))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 8)
+
+                Text("绩满满")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.white)
+                Text(mode == .login ? "用手机号登录，继续学习" : "注册账号，开启学习")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color.white.opacity(0.88))
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 28)
+        }
+        .frame(height: 188)
+    }
+
+    private var formCard: some View {
+        VStack(spacing: 16) {
             if mode == .login {
                 HStack(spacing: 0) {
-                    wayTab("验证码登录", selected: loginWay == .code) { loginWay = .code }
                     wayTab("密码登录", selected: loginWay == .password) { loginWay = .password }
+                    wayTab("验证码登录", selected: loginWay == .code) { loginWay = .code }
                 }
-                .background(Color(hex: "F3F4F6"))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(Color(hex: "EEF2F6"))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
-            fieldRow {
+            labeledField("手机号") {
                 TextField("请输入手机号", text: $phone)
                     .keyboardType(.numberPad)
                     .textContentType(.telephoneNumber)
+                    .focused($focusedField, equals: .phone)
             }
 
             if mode == .register || loginWay == .code {
-                HStack(spacing: 8) {
-                    fieldRow {
+                labeledField("验证码") {
+                    HStack(spacing: 8) {
                         TextField("请输入验证码", text: $verifyCode)
                             .keyboardType(.numberPad)
                             .textContentType(.oneTimeCode)
+                            .focused($focusedField, equals: .code)
+                        Button(action: sendCode) {
+                            Text(countdown > 0 ? "\(countdown)s" : "获取验证码")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(countdown > 0 ? AppColors.textMuted : AppColors.primary)
+                                .padding(.horizontal, 4)
+                        }
+                        .disabled(countdown > 0 || loading)
+                        .buttonStyle(.plain)
                     }
-                    Button(action: sendCode) {
-                        Text(countdown > 0 ? "\(countdown)s" : "获取验证码")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(countdown > 0 ? AppColors.textMuted : .white)
-                            .padding(.horizontal, 10)
-                            .frame(height: 44)
-                            .background(countdown > 0 ? Color(hex: "E5E7EB") : AppColors.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .disabled(countdown > 0 || loading)
-                    .buttonStyle(.plain)
                 }
             }
 
             if mode == .register || loginWay == .password {
-                fieldRow {
-                    SecureField(mode == .register ? "设置密码（6-32位）" : "请输入密码", text: $password)
+                labeledField(mode == .register ? "设置密码" : "密码") {
+                    SecureField(mode == .register ? "6-32 位密码" : "请输入密码", text: $password)
                         .textContentType(mode == .register ? .newPassword : .password)
+                        .focused($focusedField, equals: .password)
                 }
             }
 
@@ -121,15 +159,15 @@ struct LoginScreen: View {
                 Button(action: { checked.toggle() }) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(checked ? AppColors.primaryLight : Color.white)
+                            .fill(checked ? AppColors.primary : Color.white)
                             .frame(width: 18, height: 18)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 4)
-                                    .stroke(checked ? AppColors.primaryLight : Color(hex: "CCCCCC"), lineWidth: 1)
+                                    .stroke(checked ? AppColors.primary : Color(hex: "CCCCCC"), lineWidth: 1)
                             )
                         if checked {
-                            Text("✓")
-                                .font(.system(size: 12, weight: .bold))
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.white)
                         }
                     }
@@ -139,18 +177,20 @@ struct LoginScreen: View {
                 agreementText
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
 
             Button(action: submit) {
                 Text(mode == .login ? "登录" : "注册")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 46)
+                    .frame(height: 48)
                     .background(AppColors.primary)
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
             .disabled(loading)
+            .padding(.top, 4)
 
             Button(action: switchMode) {
                 Text(mode == .login ? "没有账号？立即注册" : "已有账号？去登录")
@@ -158,44 +198,39 @@ struct LoginScreen: View {
                     .foregroundColor(AppColors.primary)
             }
             .buttonStyle(.plain)
-
-            Button(action: onBack) {
-                Text("返回")
-                    .font(.system(size: 14))
-                    .foregroundColor(AppColors.primary)
-            }
-            .buttonStyle(.plain)
+            .padding(.top, 4)
         }
-        .padding(18)
-        .background(Color.white.opacity(0.96))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     private func wayTab(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 14, weight: selected ? .medium : .regular))
+                .font(.system(size: 14, weight: selected ? .semibold : .regular))
                 .foregroundColor(selected ? .white : AppColors.textSecondary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                .padding(.vertical, 10)
                 .background(selected ? AppColors.primary : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
     }
 
-    private func fieldRow<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .font(.system(size: 15))
-            .padding(.horizontal, 12)
-            .frame(height: 44)
-            .background(Color(hex: "F8FAFB"))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color(hex: "E5E7EB"), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 8)
-            )
+    private func labeledField<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppColors.textSecondary)
+            content()
+                .font(.system(size: 16))
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .background(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color(hex: "E5E7EB"), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
     }
 
     private var agreementText: some View {
@@ -218,6 +253,8 @@ struct LoginScreen: View {
         mode = mode == .login ? .register : .login
         verifyCode = ""
         password = ""
+        loginWay = .password
+        hideKeyboard()
     }
 
     private func sendCode() {

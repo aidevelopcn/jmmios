@@ -38,7 +38,7 @@ enum AppFeatures {
 
 /// App Store Connect 元数据 URL
 enum AppStoreURL {
-    static let support = "https://ad.91jmm.com/support.html"
+    static let support = "https://www.91jmm.com/"
 }
 
 /// 用户协议链接

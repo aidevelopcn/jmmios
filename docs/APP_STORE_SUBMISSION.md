@@ -80,7 +80,7 @@
 ### 3.4 技术支持 URL
 
 ```
-https://ad.91jmm.com/support.html
+https://www.91jmm.com/
 ```
 
 （独立技术支持页，含联系方式与 FAQ；勿填用户协议 URL）

@@ -7,7 +7,6 @@ struct AccountManageView: View {
     let onOpenApplyClose: () -> Void
 
     @State private var showLogoutConfirm = false
-    @State private var checkingVersion = false
     @State private var toastMessage = ""
     @State private var showToast = false
     @StateObject private var apiService = ApiService.shared
@@ -15,7 +14,7 @@ struct AccountManageView: View {
     private let customerServiceURL = URL(string: "https://work.weixin.qq.com/kfid/kfcb8e8bcd4fd690dae")!
 
     private enum AccountMenuItem: CaseIterable {
-        case customerService, userAgreement, privacyPolicy, clearCache, versionCheck, logout, closeAccount
+        case customerService, userAgreement, privacyPolicy, clearCache, logout, closeAccount
 
         var title: String {
             switch self {
@@ -23,7 +22,6 @@ struct AccountManageView: View {
             case .userAgreement: return "用户协议"
             case .privacyPolicy: return "隐私协议"
             case .clearCache: return "清除缓存"
-            case .versionCheck: return "版本更新"
             case .logout: return "退出登录"
             case .closeAccount: return "注销账号"
             }
@@ -43,16 +41,6 @@ struct AccountManageView: View {
                 }
             }
             .background(Color.white)
-
-            if checkingVersion {
-                HStack(spacing: 8) {
-                    ProgressView().scaleEffect(0.8)
-                    Text("检查中...")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "666666"))
-                }
-                .padding(16)
-            }
 
             Spacer()
         }
@@ -104,8 +92,6 @@ struct AccountManageView: View {
             openURL(URL(string: AgreementURL.privacyPolicy)!)
         case .clearCache:
             clearCache()
-        case .versionCheck:
-            checkVersion()
         case .logout:
             showLogoutConfirm = true
         case .closeAccount:
@@ -143,17 +129,5 @@ struct AccountManageView: View {
         }
         toastMessage = "缓存清理完成"
         showToast = true
-    }
-
-    private func checkVersion() {
-        checkingVersion = true
-        Task {
-            let tip = await apiService.checkAppVersion()
-            await MainActor.run {
-                checkingVersion = false
-                toastMessage = tip
-                showToast = true
-            }
-        }
     }
 }
