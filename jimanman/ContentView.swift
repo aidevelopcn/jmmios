@@ -4,12 +4,18 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var showLogin = false
     @State private var showGpaCalculator = false
+    @State private var gpaOpenHistory = false
+    @State private var gpaFromGradeTarget = false
     @State private var showAssessment = false
     @State private var assessmentInProgressId: Int?
     @State private var assessmentReport: (id: Int, score: Int)?
     @State private var showAssessmentSummary = false
     @State private var profileRoute: ProfileRoute?
     @State private var hideTabBarForCamera = false
+    @State private var chatHistoryVisible = false
+    @State private var qaRefreshTrigger = 0
+    @State private var homeRoute: HomeRoute?
+    @StateObject private var academicSession = AcademicSession()
     
     // 协议弹窗
     @AppStorage("agreementAccepted") private var agreementAccepted = false
@@ -19,6 +25,7 @@ struct ContentView: View {
         ZStack {
             mainContent
         }
+        .environmentObject(academicSession)
         .overlay {
             if !agreementAccepted {
                 AgreementGateView {
@@ -42,7 +49,18 @@ struct ContentView: View {
                     selectedTab = 2
                 })
             } else if showGpaCalculator {
-                GpaCalculatorView(onBack: { showGpaCalculator = false })
+                GpaAcademicView(openHistory: gpaOpenHistory, onBack: {
+                    showGpaCalculator = false
+                    let reopenTarget = gpaFromGradeTarget
+                    gpaOpenHistory = false
+                    gpaFromGradeTarget = false
+                    if reopenTarget {
+                        homeRoute = .gradeTarget
+                    }
+                })
+            } else if let route = homeRoute {
+                homeDestination(route)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let route = profileRoute {
                 profileDestination(route)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -80,6 +98,7 @@ struct ContentView: View {
                 AssessmentHomeView(
                     onBack: { showAssessment = false },
                     onStartAssessment: { aid in
+                        if AssessmentStore.isLocked { return }
                         showAssessment = false
                         assessmentInProgressId = aid
                     },
@@ -95,20 +114,36 @@ struct ContentView: View {
                         switch selectedTab {
                         case 0:
                             HomeView(
-                                onOpenGpa: { showGpaCalculator = true },
+                                onOpenSubjectRegister: { homeRoute = .subjectRegister },
+                                onOpenGpa: {
+                                    gpaOpenHistory = false
+                                    gpaFromGradeTarget = false
+                                    showGpaCalculator = true
+                                },
+                                onOpenGradeTarget: { homeRoute = .gradeTarget },
                                 onOpenAssessment: { showAssessment = true },
                                 onOpenAiChat: { selectedTab = 1 },
                                 onOpenCourse: {
-                                    guard AppFeatures.showExternalCourses else { return }
-                                    if !MyCourseOpener.openInExternalBrowser() {
-                                        showOpenCourseError = true
+                                    if AppFeatures.showExternalCourses {
+                                        if !MyCourseOpener.openInExternalBrowser() {
+                                            showOpenCourseError = true
+                                        }
+                                    } else {
+                                        homeRoute = .myCourse
                                     }
-                                }
+                                },
+                                onOpenPoliticsQuiz: { homeRoute = .politicsQuiz },
+                                onOpenReviewPlan: { homeRoute = .reviewPlan }
                             )
                         case 1:
                             AiChatView(
                                 onNeedLogin: { showLogin = true },
-                                onCameraOverlayVisibleChanged: { hideTabBarForCamera = $0 }
+                                onOpenTimetable: { homeRoute = .subjectRegister },
+                                onOpenHome: { selectedTab = 0 },
+                                onOpenMine: { selectedTab = 2 },
+                                qaRefreshTrigger: qaRefreshTrigger,
+                                onCameraOverlayVisibleChanged: { hideTabBarForCamera = $0 },
+                                onHistoryVisibleChanged: { chatHistoryVisible = $0 }
                             )
                         default:
                             MyView(
@@ -123,7 +158,7 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    if !hideTabBarForCamera {
+                    if !(hideTabBarForCamera || (selectedTab == 1 && !chatHistoryVisible)) {
                         MainTabBar(selectedTab: $selectedTab)
                             .background(Color.white.ignoresSafeArea(edges: .bottom))
                     }
@@ -132,6 +167,35 @@ struct ContentView: View {
         }
     }
     
+    @ViewBuilder
+    private func homeDestination(_ route: HomeRoute) -> some View {
+        switch route {
+        case .subjectRegister:
+            SubjectRegisterView(onBack: {
+                homeRoute = nil
+                qaRefreshTrigger += 1
+            }, onOpenGpa: {
+                homeRoute = nil
+                gpaOpenHistory = false
+                gpaFromGradeTarget = false
+                showGpaCalculator = true
+            })
+        case .gradeTarget:
+            GradeBacktrackView(onBack: { homeRoute = nil }, onOpenHistory: {
+                homeRoute = nil
+                gpaOpenHistory = true
+                gpaFromGradeTarget = true
+                showGpaCalculator = true
+            })
+        case .politicsQuiz:
+            HomeFeaturePlaceholderView(title: "思政刷题", onBack: { homeRoute = nil })
+        case .reviewPlan:
+            HomeFeaturePlaceholderView(title: "复习计划", onBack: { homeRoute = nil })
+        case .myCourse:
+            HomeFeaturePlaceholderView(title: "我的课程", onBack: { homeRoute = nil })
+        }
+    }
+
     @ViewBuilder
     private func profileDestination(_ route: ProfileRoute) -> some View {
         switch route {
@@ -199,12 +263,20 @@ private struct AgreementGateView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 12) {
-                    Link("用户协议", destination: URL(string: AgreementURL.userAgreement)!)
-                        .font(.system(size: 14))
+                    Button("用户协议") {
+                        SafariOpen.page(AgreementURL.userAgreement)
+                    }
+                    .font(.system(size: 14))
+                    .buttonStyle(.plain)
+                    .foregroundColor(AppColors.primary)
                     Text("|")
                         .foregroundColor(AppColors.textMuted)
-                    Link("隐私协议", destination: URL(string: AgreementURL.privacyPolicy)!)
-                        .font(.system(size: 14))
+                    Button("隐私协议") {
+                        SafariOpen.page(AgreementURL.privacyPolicy)
+                    }
+                    .font(.system(size: 14))
+                    .buttonStyle(.plain)
+                    .foregroundColor(AppColors.primary)
                 }
 
                 Button(action: onAccept) {
@@ -229,6 +301,10 @@ private struct AgreementGateView: View {
 }
 
 // MARK: - 路由枚举
+enum HomeRoute {
+    case subjectRegister, gradeTarget, politicsQuiz, reviewPlan, myCourse
+}
+
 enum ProfileRoute {
     case myAsk, vipCenter, recharge, myOrders
     case account, applyCloseAccount, confirmCloseAccount

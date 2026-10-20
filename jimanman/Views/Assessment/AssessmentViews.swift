@@ -40,6 +40,8 @@ struct AssessmentHomeView: View {
 
     @State private var progress: [Int: Int] = [:]
     @State private var showIncompleteHint = false
+    @State private var assessmentLocked = AssessmentStore.isLocked
+    @State private var showLockedHint = false
 
     private var assessmentItems: [AssessmentItem] {
         AssessmentStore.loadConfigs().map(\.item)
@@ -57,6 +59,15 @@ struct AssessmentHomeView: View {
                     assessmentTopBar
 
                     assessmentHeroCard
+
+                    if assessmentLocked {
+                        Text("班主任已确认，不可再修改")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(hex: "E85A4F"))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                    }
 
                     Text("专项探索")
                         .font(.system(size: 11, weight: .bold))
@@ -87,6 +98,11 @@ struct AssessmentHomeView: View {
             Button("确定", role: .cancel) {}
         } message: {
             Text("完成全部专项后可查看综合报告")
+        }
+        .alert("提示", isPresented: $showLockedHint) {
+            Button("确定", role: .cancel) {}
+        } message: {
+            Text("班主任已确认，不可再修改")
         }
     }
 
@@ -199,11 +215,24 @@ struct AssessmentHomeView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .onTapGesture { onStartAssessment(item.id) }
+        .onTapGesture {
+            if assessmentLocked {
+                showLockedHint = true
+            } else {
+                onStartAssessment(item.id)
+            }
+        }
     }
 
     private func loadProgress() {
         progress = AssessmentStore.loadProgress()
+        Task {
+            let locked = await ApiService.shared.fetchAcademicAssessmentLocked()
+            await MainActor.run { assessmentLocked = locked }
+            if !locked {
+                AssessmentStore.syncIfComplete(progress: progress)
+            }
+        }
     }
 
     @ViewBuilder
@@ -242,6 +271,8 @@ struct AssessmentQuestionView: View {
     @State private var currentPage = 0
     @State private var answers: [Int: Int] = [:]
     @State private var showIncompletePageHint = false
+    @State private var showLockedHint = false
+    @State private var assessmentLocked = AssessmentStore.isLocked
 
     private let pageSize = 10
 
@@ -285,10 +316,28 @@ struct AssessmentQuestionView: View {
                 questionBottomBar
             }
         }
+        .onAppear { checkAssessmentLocked() }
         .alert("提示", isPresented: $showIncompletePageHint) {
             Button("确定", role: .cancel) {}
         } message: {
             Text("请完成本页所有题目")
+        }
+        .alert("提示", isPresented: $showLockedHint) {
+            Button("确定", role: .cancel) { onQuit() }
+        } message: {
+            Text("班主任已确认，不可再修改")
+        }
+    }
+
+    private func checkAssessmentLocked() {
+        Task {
+            let locked = await ApiService.shared.fetchAcademicAssessmentLocked()
+            await MainActor.run {
+                assessmentLocked = locked
+                if locked {
+                    showLockedHint = true
+                }
+            }
         }
     }
 
@@ -387,7 +436,13 @@ struct AssessmentQuestionView: View {
             HStack(spacing: 6) {
                 ForEach(options) { option in
                     let selected = answers[question.id] == option.value
-                    Button(action: { answers[question.id] = option.value }) {
+                    Button(action: {
+                        if assessmentLocked {
+                            showLockedHint = true
+                        } else {
+                            answers[question.id] = option.value
+                        }
+                    }) {
                         Text(option.label)
                             .font(.system(size: 10, weight: selected ? .bold : .regular))
                             .foregroundColor(selected ? Color(hex: "00D7CD") : Color(hex: "6B7280"))
@@ -416,6 +471,10 @@ struct AssessmentQuestionView: View {
     }
 
     private func handleSubmit() {
+        if assessmentLocked {
+            showLockedHint = true
+            return
+        }
         guard canGoNext else {
             showIncompletePageHint = true
             return

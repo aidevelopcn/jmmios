@@ -153,6 +153,7 @@ struct AskRecordItem: Identifiable {
     let title: String
     let questionText: String
     let answerSummary: String
+    let answerText: String
     let imageUrl: String
     let timeText: String
 }
@@ -162,6 +163,43 @@ struct ConversationItem: Identifiable {
     let id: String
     let title: String
     let messageCount: Int
+    let sessionId: String
+    let agentId: Int
+    let subjectName: String
+    let knowledgePoint: String
+    let agentName: String
+    let startedAt: Int64
+    let startedAtText: String
+    let preview: String
+    let hasImage: Bool
+
+    init(
+        id: String,
+        title: String,
+        messageCount: Int,
+        sessionId: String = "",
+        agentId: Int = 0,
+        subjectName: String = "",
+        knowledgePoint: String = "",
+        agentName: String = "",
+        startedAt: Int64 = 0,
+        startedAtText: String = "",
+        preview: String = "",
+        hasImage: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.messageCount = messageCount
+        self.sessionId = sessionId
+        self.agentId = agentId
+        self.subjectName = subjectName
+        self.knowledgePoint = knowledgePoint
+        self.agentName = agentName
+        self.startedAt = startedAt
+        self.startedAtText = startedAtText
+        self.preview = preview
+        self.hasImage = hasImage
+    }
 }
 
 // MARK: - 聊天消息

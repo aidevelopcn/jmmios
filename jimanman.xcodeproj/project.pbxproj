@@ -21,6 +21,15 @@
 		B1C2D3E40123456789000001 /* AiCameraCaptureKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E40123456789000002 /* AiCameraCaptureKit.swift */; };
 		92A34BA4BBDC5A76A327BB3C /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31547D7BEDC1647FBA3EB29 /* HomeView.swift */; };
 		9E294CA5BA4DA5875898DBEB /* ApiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95784DA18BE660972D363AF4 /* ApiService.swift */; };
+		E4A1B2C3D4E5F67890000002 /* AcademicHomeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F67890000001 /* AcademicHomeService.swift */; };
+		E4A1B2C3D4E5F67890000012 /* AcademicModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F67890000011 /* AcademicModels.swift */; };
+		E4A1B2C3D4E5F67890000014 /* AcademicCalc.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F67890000013 /* AcademicCalc.swift */; };
+		E4A1B2C3D4E5F67890000016 /* AcademicApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F67890000015 /* AcademicApi.swift */; };
+		E4A1B2C3D4E5F67890000018 /* AcademicChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F67890000017 /* AcademicChrome.swift */; };
+		E4A1B2C3D4E5F6789000001A /* SubjectRegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F67890000019 /* SubjectRegisterView.swift */; };
+		E4A1B2C3D4E5F6789000001C /* GradeBacktrackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F6789000001B /* GradeBacktrackView.swift */; };
+		E4A1B2C3D4E5F6789000001E /* GpaAcademicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F6789000001D /* GpaAcademicView.swift */; };
+		E4A1B2C3D4E5F67890000020 /* QaHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F6789000001F /* QaHelpers.swift */; };
 		A1B2C3D451111111100000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000001 /* AppDelegate.swift */; };
 		A1B2C3D451111111100000002 /* WechatLoginBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000002 /* WechatLoginBridge.swift */; };
 		C1D2E3F40123456789000001 /* AppleSignInService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F40123456789000002 /* AppleSignInService.swift */; };
@@ -70,6 +79,15 @@
 		7F414839B7DBE59DBCA4C149 /* GpaCalculatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GpaCalculatorView.swift; path = jimanman/Views/Gpa/GpaCalculatorView.swift; sourceTree = "<group>"; };
 		815B4BCA9CAA424E99943A61 /* RechargeAndOrdersViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RechargeAndOrdersViews.swift; path = jimanman/Views/Profile/RechargeAndOrdersViews.swift; sourceTree = "<group>"; };
 		95784DA18BE660972D363AF4 /* ApiService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ApiService.swift; path = jimanman/Services/ApiService.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F67890000001 /* AcademicHomeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AcademicHomeService.swift; path = jimanman/Services/AcademicHomeService.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F67890000011 /* AcademicModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AcademicModels.swift; path = jimanman/Models/AcademicModels.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F67890000013 /* AcademicCalc.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AcademicCalc.swift; path = jimanman/Services/AcademicCalc.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F67890000015 /* AcademicApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AcademicApi.swift; path = jimanman/Services/AcademicApi.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F67890000017 /* AcademicChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AcademicChrome.swift; path = jimanman/Views/Academic/AcademicChrome.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F67890000019 /* SubjectRegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubjectRegisterView.swift; path = jimanman/Views/Academic/SubjectRegisterView.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F6789000001B /* GradeBacktrackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GradeBacktrackView.swift; path = jimanman/Views/Academic/GradeBacktrackView.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F6789000001D /* GpaAcademicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GpaAcademicView.swift; path = jimanman/Views/Academic/GpaAcademicView.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F6789000001F /* QaHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QaHelpers.swift; path = jimanman/Services/QaHelpers.swift; sourceTree = "<group>"; };
 		9BC94857986CB9DC28EE015C /* ConfirmCloseAccountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ConfirmCloseAccountView.swift; path = jimanman/Views/Profile/ConfirmCloseAccountView.swift; sourceTree = "<group>"; };
 		A1B2C3D441111111100000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = jimanman/AppDelegate.swift; sourceTree = "<group>"; };
 		A1B2C3D441111111100000002 /* WechatLoginBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WechatLoginBridge.swift; path = jimanman/Services/WechatLoginBridge.swift; sourceTree = "<group>"; };
@@ -155,6 +173,15 @@
 				659B4259ACD751E1172799A7 /* VipAndCourseViews.swift */,
 				04534896AD0D2BE81AB4E4E0 /* LoginView.swift */,
 				95784DA18BE660972D363AF4 /* ApiService.swift */,
+				E4A1B2C3D4E5F67890000001 /* AcademicHomeService.swift */,
+				E4A1B2C3D4E5F67890000011 /* AcademicModels.swift */,
+				E4A1B2C3D4E5F67890000013 /* AcademicCalc.swift */,
+				E4A1B2C3D4E5F67890000015 /* AcademicApi.swift */,
+				E4A1B2C3D4E5F67890000017 /* AcademicChrome.swift */,
+				E4A1B2C3D4E5F67890000019 /* SubjectRegisterView.swift */,
+				E4A1B2C3D4E5F6789000001B /* GradeBacktrackView.swift */,
+				E4A1B2C3D4E5F6789000001D /* GpaAcademicView.swift */,
+				E4A1B2C3D4E5F6789000001F /* QaHelpers.swift */,
 				A1B2C3D441111111100000001 /* AppDelegate.swift */,
 				A1B2C3D441111111100000002 /* WechatLoginBridge.swift */,
 				C1D2E3F40123456789000002 /* AppleSignInService.swift */,
@@ -295,6 +322,15 @@
 				AA3847219B9862552D59EC94 /* VipAndCourseViews.swift in Sources */,
 				37A64757A4B4B7A7235FD3F5 /* LoginView.swift in Sources */,
 				9E294CA5BA4DA5875898DBEB /* ApiService.swift in Sources */,
+				E4A1B2C3D4E5F67890000002 /* AcademicHomeService.swift in Sources */,
+				E4A1B2C3D4E5F67890000012 /* AcademicModels.swift in Sources */,
+				E4A1B2C3D4E5F67890000014 /* AcademicCalc.swift in Sources */,
+				E4A1B2C3D4E5F67890000016 /* AcademicApi.swift in Sources */,
+				E4A1B2C3D4E5F67890000018 /* AcademicChrome.swift in Sources */,
+				E4A1B2C3D4E5F6789000001A /* SubjectRegisterView.swift in Sources */,
+				E4A1B2C3D4E5F6789000001C /* GradeBacktrackView.swift in Sources */,
+				E4A1B2C3D4E5F6789000001E /* GpaAcademicView.swift in Sources */,
+				E4A1B2C3D4E5F67890000020 /* QaHelpers.swift in Sources */,
 				A1B2C3D451111111100000001 /* AppDelegate.swift in Sources */,
 				A1B2C3D451111111100000002 /* WechatLoginBridge.swift in Sources */,
 				C1D2E3F40123456789000001 /* AppleSignInService.swift in Sources */,
@@ -428,7 +464,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
 				DEVELOPMENT_TEAM = QNC87AZURH;
 				ENABLE_PREVIEWS = YES;
@@ -481,7 +517,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
 				DEVELOPMENT_TEAM = QNC87AZURH;
 				ENABLE_PREVIEWS = YES;

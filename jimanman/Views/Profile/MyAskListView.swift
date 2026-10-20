@@ -203,16 +203,22 @@ struct MyAskListView: View {
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 220)
                                     .background(Color(hex: "F3F4F6"))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                                     .onTapGesture {
                                         previewURL = item.imageUrl
                                         showImagePreview = true
                                     }
                                 Spacer().frame(height: 10)
                             }
-                            Text("当前仅展示题目与图片，文本答疑可在AI会话中查看渲染内容")
-                                .font(.system(size: 11))
-                                .foregroundColor(Color(hex: "94A3B8"))
+                            if !item.answerText.isEmpty {
+                                Text("解答")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Color(hex: "334155"))
+                                Spacer().frame(height: 4)
+                                Text(item.answerText)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(hex: "0F172A"))
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }

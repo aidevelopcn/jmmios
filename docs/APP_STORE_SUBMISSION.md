@@ -77,13 +77,13 @@
 绩满满,绩点,GPA,AI答疑,大学生,学习,测评,高数,考研,学业规划
 ```
 
-### 3.4 技术支持 URL
+### 3.4 技术支持 URL（App Store Connect 必须改成这一条）
 
 ```
-https://www.91jmm.com/
+https://ad.91jmm.com/api/article/support
 ```
 
-（独立技术支持页，含联系方式与 FAQ；勿填用户协议 URL）
+独立 HTML 支持页（联系方式 + FAQ）。**不要再填** `https://www.91jmm.com/`（官网是 SPA，审核端曾判定不可用）。官网静态备份页：`https://www.91jmm.com/support.html`（需官网发版后才可用）。
 
 ### 3.5 营销 URL（可选）
 
@@ -149,18 +149,20 @@ https://ad.91jmm.com/api/article/ysxy
 ## 六、审核备注（Review Notes，英文或中文均可）
 
 ```
-测试账号：（请填写可用微信登录的测试账号，或提供 Demo 登录方式）
+Demo account (phone + password, no WeChat / no Sign in with Apple):
+Phone: 【填写已注册的大陆手机号】
+Password: 【填写该账号密码】
 
-功能说明：
-1. 登录：点击「我的」→ 登录，使用微信授权。
-2. AI 答疑：底部 Tab「答疑」→ 输入或拍照提问。
-3. GPA：首页 → GPA 计算。
-4. 测评：首页 → 学习能力测试。
-5. 我的课程：首页 → 我的课程，将在 Safari 打开外部课程页。
+How to sign in:
+1. The Home tab works without login. GPA / subject register / grade reverse-calc do not require login.
+2. To sign in: tap Me → tap the header → check the agreement → Password login → enter the demo phone and password → 登录.
+3. You can tap 「先逛逛」 or the back button to leave the login page and keep browsing.
 
-微信登录需安装微信 App。Universal Link 域名：ad.91jmm.com。
+AI Q&A: after login, tap the Q&A tab, type or take a photo.
+GPA: Home → GPA计算.
+Assessment: Home → 能力测试.
 
-如审核员无法使用微信登录，请联系开发者提供备用测试方式。
+Support URL: https://ad.91jmm.com/api/article/support
 ```
 
 ---

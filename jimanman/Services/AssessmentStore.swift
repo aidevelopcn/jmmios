@@ -3,6 +3,15 @@ import Foundation
 /// 学习能力测评数据与进度管理，对齐 Android AssessmentScreens.kt
 enum AssessmentStore {
     private static let progressKey = "assessment_progress"
+    private static let lockedKey = "assessment_locked"
+
+    static var isLocked: Bool {
+        UserDefaults.standard.bool(forKey: lockedKey)
+    }
+
+    static func setLocked(_ locked: Bool) {
+        UserDefaults.standard.set(locked, forKey: lockedKey)
+    }
 
     private static let metaMap: [Int: (title: String, duration: Int, iconName: String, fallbackDesc: String)] = [
         1: ("注意力控制", 4, "ceping_target", "评估你的专注力和抗干扰能力"),
@@ -80,12 +89,68 @@ enum AssessmentStore {
     }
 
     static func saveScore(assessmentId: Int, score: Int) {
+        guard !isLocked else { return }
         var map = loadProgress()
         map[assessmentId] = score
         let stringDict = Dictionary(uniqueKeysWithValues: map.map { (String($0.key), $0.value) })
         if let data = try? JSONEncoder().encode(stringDict) {
             UserDefaults.standard.set(data, forKey: progressKey)
         }
+        syncIfComplete(progress: map)
+    }
+
+    static func syncIfComplete(progress: [Int: Int]? = nil) {
+        guard !isLocked else { return }
+        let map = progress ?? loadProgress()
+        let total = loadConfigs().count
+        guard total >= 5, map.count >= total else { return }
+        Task { await ApiService.shared.saveAcademicAssessment(progress: map, reportJSON: reportJSON(progress: map)) }
+    }
+
+    static func reportJSON(progress: [Int: Int]) -> String {
+        let configs = loadConfigs()
+        var items: [[String: Any]] = []
+        var bestId = 0
+        var bestScore = -1
+        for config in configs {
+            let item = config.item
+            let score = progress[item.id] ?? 0
+            let percent = item.maxScore > 0 ? score * 100 / item.maxScore : 0
+            let level: String
+            if percent >= 80 { level = "极强" }
+            else if percent >= 60 { level = "较强" }
+            else if percent >= 40 { level = "一般" }
+            else { level = "较弱" }
+            if score > bestScore {
+                bestScore = score
+                bestId = item.id
+            }
+            items.append([
+                "id": item.id,
+                "title": item.title,
+                "score": score,
+                "maxScore": item.maxScore,
+                "percent": percent,
+                "level": level
+            ])
+        }
+        let archetype: String
+        switch bestId {
+        case 1: archetype = "深度潜伏者"
+        case 2: archetype = "战略思想家"
+        case 3: archetype = "自燃型行动派"
+        case 4: archetype = "超级连接者"
+        case 5: archetype = "高成就者"
+        default: archetype = "均衡发展者"
+        }
+        let payload: [String: Any] = [
+            "archetype": archetype,
+            "items": items,
+            "progress": Dictionary(uniqueKeysWithValues: progress.map { (String($0.key), $0.value) })
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let text = String(data: data, encoding: .utf8) else { return "{}" }
+        return text
     }
 
     static func saveSummaryReport(reports: [(item: AssessmentItem, score: Int, level: String)], archetype: String) -> Result<String, Error> {

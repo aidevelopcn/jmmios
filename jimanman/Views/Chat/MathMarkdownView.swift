@@ -19,6 +19,7 @@ enum MathHTMLBuilder {
         let text = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return false }
         if text.contains("$$") || text.contains("\\(") || text.contains("\\[") || text.contains("\\)") { return true }
+        if text.contains("\\") { return true }
         if text.contains("```") || text.contains("**") || text.contains("__") || text.contains("##") { return true }
         if text.contains("![") || text.contains("<table") { return true }
         if text.range(of: #"\$[^\$\n]+\$"#, options: .regularExpression) != nil { return true }
@@ -58,7 +59,7 @@ enum MathHTMLBuilder {
               let idx = 0;
               const blocks = [];
               function protect(latex, display) {
-                const key = "\\u0000MATH" + (idx++) + "\\u0000";
+                const key = "@@KATEX" + (idx++) + "@@";
                 let html = "";
                 try {
                   html = katex.renderToString(latex.trim(), {displayMode:display, throwOnError:false, strict:"ignore"});
@@ -68,10 +69,13 @@ enum MathHTMLBuilder {
                 blocks.push({key, html: display ? "<div class='katex-display'>" + html + "</div>" : html});
                 return key;
               }
-              md = md.replace(/\\\[([\\s\\S]*?)\\\]/g, (_, p1) => protect(p1, true));
+              md = md.replace(/\\\\(?=[a-zA-Z])/g, "\\");
+              md = md.replace(/\\\[([\s\S]*?)\\\]/g, (_, p1) => protect(p1, true));
               md = md.replace(/\$\$([\s\S]*?)\$\$/g, (_, p1) => protect(p1, true));
               md = md.replace(/\\\(([\s\S]*?)\\\)/g, (_, p1) => protect(p1, false));
-              md = md.replace(/\$([^\$\n]+?)\$/g, (_, p1) => protect(p1, false));
+              md = md.replace(/\$([^$\n]+?)\$/g, (_, p1) => protect(p1, false));
+              md = md.replace(/\[\s*([^[\]]*(?:\\[a-zA-Z]+|[_^])[^[\]]*)\s*]/g, (_, p1) => protect(p1, true));
+              md = md.replace(/\\[a-zA-Z]+(?:\s*\([^()]*\))?(?:\s*\{[^{}]*\})*(?:\s*[_^](?:\{[^{}]*\}|[^\s\\{]))*/g, (m) => protect(m, false));
               let html = marked.parse(md);
               blocks.forEach(b => { html = html.split(b.key).join(b.html); });
               return html;

@@ -1,17 +1,18 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 /// API 基础配置 - 与 Android 端完全一致
 enum ApiConfig {
-    static let baseURL = "https://ad.91jmm.com"
+    static let baseURL = "https://api.91jmm.com"
     static let wxAppID = "wx25240f7addf5c344"
     /// 微信 Universal Link，需与开放平台及服务器 apple-app-site-association 配置一致
-    static let wxUniversalLink = "https://ad.91jmm.com/jimanman/"
+    static let wxUniversalLink = "https://api.91jmm.com/jimanman/"
     /// 未安装微信时，网页 OAuth 回调 Scheme（需与后端 wxAuthCallback 一致）
     static let wxWebCallbackScheme = "com.gaoshub.jimanman"
     /// 网站应用 AppID（网页 OAuth 兜底，与后端 wxmp.production.AppID 一致）
     static let wxWebAppID = "wxf4107846851b3593"
-    static let wxWebAuthCallback = "https://ad.91jmm.com/api/user/wxAuthCallback"
+    static let wxWebAuthCallback = "https://api.91jmm.com/api/user/wxAuthCallback"
 }
 
 #if DEBUG
@@ -36,15 +37,22 @@ enum AppFeatures {
     static var showRecharge: Bool { showMembership }
 }
 
-/// App Store Connect 元数据 URL
+/// App Store Connect 元数据 URL（须为可打开的独立支持页，勿填官网 SPA 首页）
 enum AppStoreURL {
-    static let support = "https://www.91jmm.com/"
+    static let support = "https://api.91jmm.com/api/article/support"
+}
+
+enum SafariOpen {
+    static func page(_ string: String) {
+        guard let url = URL(string: string) else { return }
+        UIApplication.shared.open(url)
+    }
 }
 
 /// 用户协议链接
 enum AgreementURL {
-    static let userAgreement = "https://ad.91jmm.com/api/article/user"
-    static let privacyPolicy = "https://ad.91jmm.com/api/article/ysxy"
+    static let userAgreement = "https://api.91jmm.com/api/article/user"
+    static let privacyPolicy = "https://api.91jmm.com/api/article/ysxy"
 }
 
 /// 主题颜色

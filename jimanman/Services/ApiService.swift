@@ -9,7 +9,8 @@ class ApiService: ObservableObject {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 25
         config.timeoutIntervalForResource = 40
-        config.waitsForConnectivity = true
+        // 审核网络下 waitsForConnectivity 可能长时间挂起，登录页表现为错误弹窗
+        config.waitsForConnectivity = false
         return URLSession(configuration: config)
     }()
     private let baseURL = ApiConfig.baseURL
@@ -371,6 +372,23 @@ class ApiService: ObservableObject {
             invitationCode: data["invitation_code"] as? String ?? ""
         )
     }
+
+    func fetchAcademicAssessmentLocked() async -> Bool {
+        let local = AssessmentStore.isLocked
+        guard let json = await request(url: "\(baseURL)/api/user/getInfo"),
+              let code = json["code"] as? Int, code == 200,
+              let data = json["data"] as? [String: Any] else { return local }
+        let locked: Bool
+        if let flag = data["academic_assessment_locked"] as? Bool {
+            locked = flag
+        } else if let flag = data["academic_assessment_locked"] as? Int {
+            locked = flag == 1
+        } else {
+            locked = (data["academic_assessment"] as? String) == "已确认"
+        }
+        AssessmentStore.setLocked(locked)
+        return locked
+    }
     
     // MARK: - 更新用户信息
     /// POST /api/user/updateInfo (JSON)
@@ -391,6 +409,24 @@ class ApiService: ObservableObject {
         guard let json = await postForm(url: "\(baseURL)/api/user/updateInfo", params: params),
               let code = json["code"] as? Int else { return false }
         return code == 0 || code == 200
+    }
+
+    /// POST /api/user/saveAssessment 学习能力测评完成 → 教务学员档案
+    func saveAcademicAssessment(progress: [Int: Int], reportJSON: String = "{}") async {
+        let progressDict = Dictionary(uniqueKeysWithValues: progress.map { (String($0.key), $0.value) })
+        let progressJson: String
+        if let data = try? JSONSerialization.data(withJSONObject: progressDict),
+           let text = String(data: data, encoding: .utf8) {
+            progressJson = text
+        } else {
+            progressJson = "{}"
+        }
+        _ = await postForm(url: "\(baseURL)/api/user/saveAssessment", params: [
+            "status": "已测评",
+            "completed": "1",
+            "progress": progressJson,
+            "report": reportJSON
+        ])
     }
     
     // MARK: - 上传文件
@@ -513,8 +549,9 @@ class ApiService: ObservableObject {
                     return raw.isEmpty ? UUID().uuidString : raw
                 }(),
                 title: title,
-                questionText: String(question.prefix(120)),
+                questionText: question,
                 answerSummary: String(_answer.prefix(140)),
+                answerText: _answer,
                 imageUrl: image,
                 timeText: createTime
             )
@@ -522,8 +559,14 @@ class ApiService: ObservableObject {
     }
     
     /// POST /api/favorite/add
-    func addFavorite(type: String, title: String, image: String, items: [[String: Any]]) async -> Bool {
-        let dict: [String: Any] = ["type": type, "title": title, "image": image, "items": items]
+    func addFavorite(type: String, title: String, image: String, items: [[String: Any]], sessionId: String = "", subject: String = "") async -> Bool {
+        var dict: [String: Any] = ["type": type, "title": title, "image": image, "items": items]
+        if !sessionId.isEmpty {
+            dict["session_id"] = sessionId
+        }
+        if !subject.isEmpty {
+            dict["subject"] = subject
+        }
         guard let json = await postJSON(url: "\(baseURL)/api/favorite/add", dict: dict),
               let code = json["code"] as? Int else { return false }
         return code == 0 || code == 200
@@ -557,8 +600,19 @@ class ApiService: ObservableObject {
     }
     
     // MARK: - AI对话 - 流式请求（对齐 Android cozeStream）
-    func streamChat(token: String, prompt: String, sessionId: String, fileURL: String = "",
-                    onChunk: @escaping (String) -> Void) async {
+    func streamChat(
+        token: String,
+        prompt: String,
+        sessionId: String,
+        agentId: Int = 1,
+        fileURL: String = "",
+        subject: String = "",
+        provider: String = "qwen",
+        mode: String = "答案模式",
+        history: [[String: String]] = [],
+        onSubject: @escaping (String) -> Void = { _ in },
+        onChunk: @escaping (String) -> Void
+    ) async {
         guard let url = URL(string: "\(baseURL)/api/cozeStream/chat") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -571,10 +625,13 @@ class ApiService: ObservableObject {
         var body: [String: Any] = [
             "prompt": prompt,
             "session_id": sessionId,
-            "agent_id": 1,
-            "mode": "answer"
+            "agent_id": agentId,
+            "file_url": fileURL,
+            "provider": provider,
+            "mode": mode
         ]
-        if !fileURL.isEmpty { body["file_url"] = fileURL }
+        if !subject.isEmpty { body["subject"] = subject }
+        if !history.isEmpty { body["history"] = history }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         do {
@@ -605,7 +662,19 @@ class ApiService: ObservableObject {
                 let status = (obj["status"] as? String ?? "").lowercased()
                 if eventType.contains("thinking") || status.contains("thinking") { continue }
 
-                let chunk = extractStreamChunk(from: obj)
+                let subjectName = jsonStringValue(obj["subject"], default: "").isEmpty
+                    ? jsonStringValue((obj["content"] as? [String: Any])?["subject"], default: "")
+                    : jsonStringValue(obj["subject"], default: "")
+                let chunkPreview = extractStreamChunk(from: obj)
+                if chunkPreview.isEmpty && (eventType == "subject" || !subjectName.isEmpty) {
+                    let name = subjectName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !name.isEmpty {
+                        onSubject(name)
+                    }
+                    continue
+                }
+
+                let chunk = chunkPreview
                 if !chunk.isEmpty {
                     let isFirst = pending.isEmpty
                     pending += chunk
@@ -650,31 +719,74 @@ class ApiService: ObservableObject {
     // MARK: - 会话历史（对齐 Android cozeStream）
     func fetchConversationList() async -> [ConversationItem] {
         guard let json = await request(url: "\(baseURL)/api/cozeStream/conversationList"),
-              let code = json["code"] as? Int, code == 200,
+              let code = jsonIntValue(json["code"]), code == 200,
               let arr = json["data"] as? [[String: Any]] else { return [] }
         return arr.compactMap { item in
             guard let id = item["id"] as? String ?? (item["id"] as? NSNumber).map({ $0.stringValue }), !id.isEmpty else { return nil }
-            let count = jsonIntValue(item["messageCount"]) ?? 0
+            let title = item["title"] as? String ?? ""
+            let subject = jsonStringValue(item["subjectName"], default: "").isEmpty
+                ? jsonStringValue(item["subject"], default: "")
+                : jsonStringValue(item["subjectName"], default: "")
+            let titleSubject: String = {
+                if !subject.isEmpty { return subject }
+                if let regex = try? NSRegularExpression(pattern: #"^【([^】]{1,20})】"#),
+                   let match = regex.firstMatch(in: title, range: NSRange(title.startIndex..., in: title)),
+                   match.numberOfRanges > 1,
+                   let range = Range(match.range(at: 1), in: title) {
+                    return String(title[range])
+                }
+                return ""
+            }()
+            let preview = jsonStringValue(item["preview"], default: "")
+            let fileUrl = jsonStringValue(item["fileUrl"], default: "")
+            let hasImage = jsonBoolValue(item["hasImage"]) || !fileUrl.isEmpty || preview.contains("[图片]")
+            let startedAt = jsonInt64Value(item["startedAt"]) ?? jsonInt64Value(item["started_at"]) ?? 0
+            let startedRaw = jsonStringValue(item["startedAt"], default: "")
             return ConversationItem(
                 id: id,
-                title: item["title"] as? String ?? "",
-                messageCount: count
+                title: title,
+                messageCount: jsonIntValue(item["messageCount"]) ?? 0,
+                sessionId: jsonStringValue(item["sessionId"], default: ""),
+                agentId: jsonIntValue(item["agentId"]) ?? 0,
+                subjectName: titleSubject,
+                knowledgePoint: jsonStringValue(item["knowledgePoint"], default: "").isEmpty
+                    ? jsonStringValue(item["knowledge_point"], default: "")
+                    : jsonStringValue(item["knowledgePoint"], default: ""),
+                agentName: jsonStringValue(item["agentName"], default: ""),
+                startedAt: startedAt,
+                startedAtText: startedRaw,
+                preview: preview,
+                hasImage: hasImage
             )
         }
     }
 
-    func fetchConversationDetail(conversationId: String) async -> [ChatMessage] {
+    func fetchConversationDetail(conversationId: String) async -> ConversationDetailResult {
         guard let json = await postJSON(url: "\(baseURL)/api/cozeStream/conversationDetail",
                                         dict: ["conversation_id": conversationId]),
-              let code = json["code"] as? Int, code == 200 else { return [] }
-        let msgArray = (json["data"] as? [String: Any])?["messages"] as? [[String: Any]] ?? []
+              let code = jsonIntValue(json["code"]), code == 200 else {
+            return ConversationDetailResult(messages: [], sessionId: "", agentId: 0, favoriteId: 0, wrongId: 0)
+        }
+        let data = json["data"] as? [String: Any] ?? [:]
+        let conversation = data["conversation"] as? [String: Any] ?? [:]
+        let sessionId = jsonStringValue(conversation["sessionId"], default: "")
+        let agentId = jsonIntValue(conversation["agentId"]) ?? 0
+        let favoriteId = jsonIntValue(data["favoriteId"]) ?? 0
+        let wrongId = jsonIntValue(data["wrongId"]) ?? 0
+        let msgArray = data["messages"] as? [[String: Any]] ?? []
         var result: [ChatMessage] = []
         var pendingQuestion = ""
         var pendingImage = ""
+        var lastRole = ""
+        var lastContent = ""
 
         for msg in msgArray {
-            let senderType = msg["senderType"] as? Int ?? 1
-            let content = msg["content"] as? String ?? ""
+            let senderType = jsonIntValue(msg["senderType"]) ?? 1
+            let content = jsonStringValue(msg["content"], default: "")
+            let role = senderType == 1 ? "user" : "assistant"
+            if role == lastRole, content == lastContent, !content.isEmpty { continue }
+            lastRole = role
+            lastContent = content
             if senderType == 1 {
                 pendingQuestion = content
                 pendingImage = normalizeChatImageUrl(parseHistoryMessageImageUrl(from: msg))
@@ -692,7 +804,215 @@ class ApiService: ObservableObject {
                 ))
             }
         }
-        return result
+        return ConversationDetailResult(messages: result, sessionId: sessionId, agentId: agentId, favoriteId: favoriteId, wrongId: wrongId)
+    }
+
+    func persistConversation(
+        sessionId: String,
+        agentId: Int,
+        prompt: String,
+        answer: String,
+        fileUrl: String = "",
+        mode: String = "答案模式",
+        subject: String = ""
+    ) async -> Bool {
+        var dict: [String: Any] = [
+            "session_id": sessionId,
+            "agent_id": agentId,
+            "prompt": prompt,
+            "answer": answer,
+            "mode": mode,
+            "file_url": fileUrl
+        ]
+        if !subject.isEmpty { dict["subject"] = subject }
+        guard let json = await postJSON(url: "\(baseURL)/api/cozeStream/saveConversation", dict: dict),
+              let code = jsonIntValue(json["code"]) else { return false }
+        return code == 200
+    }
+
+    func deleteConversation(conversationId: String) async -> Bool {
+        guard let json = await postJSON(
+            url: "\(baseURL)/api/cozeStream/deleteConversation",
+            dict: ["conversation_id": conversationId]
+        ), let code = jsonIntValue(json["code"]) else { return false }
+        return code == 200
+    }
+
+    func fetchQaAgentList() async -> QaAgentListResult {
+        let fallback = QaAgentListResult(
+            agents: [QaAgentItem(id: 1, name: "通义千问", welcomeMessage: "")],
+            subjects: [],
+            unmatched: [],
+            qaConfig: QaChatConfig()
+        )
+        guard let json = await request(url: "\(baseURL)/api/agents/qaList") else { return fallback }
+        let code = jsonIntValue(json["code"]) ?? -1
+        guard code == 200 || code == 0 else { return fallback }
+        let data = json["data"] as? [String: Any] ?? [:]
+        let agentsRaw = data["agents"] as? [[String: Any]] ?? []
+        let agents: [QaAgentItem] = agentsRaw.compactMap { item in
+            let id = jsonIntValue(item["id"]) ?? 0
+            guard id > 0 else { return nil }
+            return QaAgentItem(
+                id: id,
+                name: jsonStringValue(item["name"], default: "通义千问"),
+                welcomeMessage: jsonStringValue(item["welcomeMessage"], default: "")
+            )
+        }
+        var config = parseQaChatConfig(data)
+        if config.providers.count <= 1, config.modes.count <= 1 {
+            if let extra = await fetchQaChatConfig() { config = extra }
+        }
+        let hintSubjects = parseQaListSubjects(data, key: "subjects")
+        let unmatched = parseQaListSubjects(data, key: "unmatched")
+        return QaAgentListResult(
+            agents: agents.isEmpty ? fallback.agents : agents,
+            subjects: hintSubjects,
+            unmatched: unmatched,
+            qaConfig: config
+        )
+    }
+
+    func fetchQaChatConfig() async -> QaChatConfig? {
+        guard let json = await request(url: "\(baseURL)/api/agents/qaConfig") else { return nil }
+        let code = jsonIntValue(json["code"]) ?? -1
+        guard code == 200 || code == 0 else { return nil }
+        let data = (json["data"] as? [String: Any]) ?? json
+        return parseQaChatConfig(data)
+    }
+
+    func deleteFavorite(id: Int) async -> Bool {
+        guard id > 0,
+              let json = await postJSON(url: "\(baseURL)/api/favorite/delete", dict: ["id": id]),
+              let code = jsonIntValue(json["code"]) else { return false }
+        return code == 0 || code == 200
+    }
+
+    func toggleFavorite(
+        question: String,
+        answer: String,
+        imageUrl: String,
+        type: String,
+        subject: String,
+        sessionId: String,
+        alreadyActive: Bool,
+        existingId: Int
+    ) async -> FavoriteToggleResult {
+        if alreadyActive, existingId > 0 {
+            if await deleteFavorite(id: existingId) {
+                return FavoriteToggleResult(ok: true, active: false, id: 0)
+            }
+        }
+        let ok = await addFavorite(
+            type: type,
+            title: favoriteTitle(question: question, answer: answer, imageUrl: imageUrl, type: type, subject: subject),
+            image: imageUrl,
+            items: favoriteItems(question: question, answer: answer, type: type),
+            sessionId: sessionId,
+            subject: subject
+        )
+        return FavoriteToggleResult(ok: ok, active: ok, id: ok ? 1 : 0)
+    }
+
+    private func favoriteTitle(question: String, answer: String, imageUrl: String, type: String, subject: String) -> String {
+        var q = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q == "[图片]" { q = type == "1" ? "图片错题" : "图片题目" }
+        let base = !q.isEmpty ? q : (imageUrl.isEmpty ? answer : "图片题目")
+        let titled = (!subject.isEmpty && !base.contains(subject)) ? "【\(subject)】\(base)" : base
+        return String(titled.prefix(50))
+    }
+
+    private func favoriteItems(question: String, answer: String, type: String) -> [[String: Any]] {
+        var q = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q == "[图片]" { q = type == "1" ? "图片错题" : "图片题目" }
+        var items: [[String: Any]] = []
+        if !q.isEmpty {
+            items.append(["content": q, "content_type": "user", "sort": 0])
+        }
+        items.append(["content": answer, "content_type": "assistant", "sort": q.isEmpty ? 0 : 1])
+        return items
+    }
+
+    private func parseQaListSubjects(_ data: [String: Any], key: String) -> [String] {
+        var out: [String] = []
+        if let arr = data[key] as? [Any] {
+            for item in arr {
+                if let obj = item as? [String: Any] {
+                    let n = jsonStringValue(obj["name"], default: "").trimmingCharacters(in: .whitespaces)
+                    if !n.isEmpty, !out.contains(n) { out.append(n) }
+                } else {
+                    let n = jsonStringValue(item, default: "").trimmingCharacters(in: .whitespaces)
+                    if !n.isEmpty, !out.contains(n) { out.append(n) }
+                }
+            }
+        }
+        return out
+    }
+
+    private func parseQaChatConfig(_ data: [String: Any]) -> QaChatConfig {
+        let cfg = (data["qaConfig"] as? [String: Any])
+            ?? (data["qa_config"] as? [String: Any])
+            ?? (data["providers"] != nil || data["modes"] != nil ? data : nil)
+        guard let cfg else { return QaChatConfig() }
+        let providers = parseQaChoiceField(cfg, key: "providers", fallbackKey: "qwen", fallbackLabel: "通义千问")
+        let modes = parseQaChoiceField(cfg, key: "modes", fallbackKey: "answer", fallbackLabel: "答案模式")
+        let defaultProvider = jsonStringValue(cfg["default_provider"], default: "").isEmpty
+            ? jsonStringValue(cfg["defaultProvider"], default: providers.first?.key ?? "qwen")
+            : jsonStringValue(cfg["default_provider"], default: "qwen")
+        let defaultMode = jsonStringValue(cfg["default_mode"], default: "").isEmpty
+            ? jsonStringValue(cfg["defaultMode"], default: modes.first?.key ?? "answer")
+            : jsonStringValue(cfg["default_mode"], default: "answer")
+        var modeProviders: [String: String] = [:]
+        let raw = cfg["mode_providers"] ?? cfg["modeProviders"]
+        if let obj = raw as? [String: Any] {
+            for (k, v) in obj {
+                let bound = jsonStringValue(v, default: "").trimmingCharacters(in: .whitespaces)
+                if !k.isEmpty, !bound.isEmpty { modeProviders[k] = bound }
+            }
+        }
+        for mode in modes where modeProviders[mode.key] == nil {
+            modeProviders[mode.key] = defaultProvider
+        }
+        return QaChatConfig(
+            providers: providers,
+            modes: modes,
+            defaultProvider: defaultProvider,
+            defaultMode: defaultMode,
+            modeProviders: modeProviders
+        )
+    }
+
+    private func parseQaChoiceField(_ parent: [String: Any], key: String, fallbackKey: String, fallbackLabel: String) -> [QaChoice] {
+        var out: [String: QaChoice] = [:]
+        func add(_ choice: QaChoice?) {
+            guard let choice, !choice.key.isEmpty, out[choice.key] == nil else { return }
+            out[choice.key] = choice
+        }
+        if let arr = parent[key] as? [Any] {
+            arr.forEach { add(parseQaChoiceItem($0)) }
+        } else if let obj = parent[key] as? [String: Any] {
+            for (itemKey, value) in obj {
+                add(parseQaChoiceItem(value) ?? QaChoice(key: itemKey, label: jsonStringValue(value, default: itemKey)))
+            }
+        }
+        return out.isEmpty ? [QaChoice(key: fallbackKey, label: fallbackLabel)] : Array(out.values)
+    }
+
+    private func parseQaChoiceItem(_ raw: Any?) -> QaChoice? {
+        if let obj = raw as? [String: Any] {
+            let key = jsonStringValue(obj["key"], default: "").isEmpty
+                ? jsonStringValue(obj["id"], default: "")
+                : jsonStringValue(obj["key"], default: "")
+            let label = jsonStringValue(obj["label"], default: "").isEmpty
+                ? jsonStringValue(obj["name"], default: key)
+                : jsonStringValue(obj["label"], default: key)
+            if key.isEmpty { return nil }
+            return QaChoice(key: key.trimmingCharacters(in: .whitespaces), label: label)
+        }
+        if let s = raw as? String, !s.isEmpty {
+            return QaChoice(key: s, label: s)
+        }
+        return nil
     }
 
     private func parseHistoryMessageImageUrl(from msg: [String: Any]) -> String {
@@ -722,6 +1042,21 @@ class ApiService: ObservableObject {
         if let n = value as? NSNumber { return n.intValue }
         if let s = value as? String { return Int(s) }
         return nil
+    }
+
+    private func jsonInt64Value(_ value: Any?) -> Int64? {
+        if let i = value as? Int64 { return i }
+        if let i = value as? Int { return Int64(i) }
+        if let n = value as? NSNumber { return n.int64Value }
+        if let s = value as? String { return Int64(s) }
+        return nil
+    }
+
+    private func jsonBoolValue(_ value: Any?) -> Bool {
+        if let b = value as? Bool { return b }
+        if let n = value as? NSNumber { return n.boolValue || n.intValue == 1 }
+        if let s = value as? String { return s == "1" || s.lowercased() == "true" }
+        return false
     }
 
     /// 兼容 API 返回字符串或数字（对齐 Android JSONObject.optString）

@@ -16,6 +16,9 @@ struct LoginScreen: View {
         case code
     }
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+
     @State private var mode: Mode = .login
     @State private var loginWay: LoginWay = .password
     @State private var phone = ""
@@ -23,7 +26,6 @@ struct LoginScreen: View {
     @State private var password = ""
     @State private var checked = false
     @State private var loading = false
-    @State private var showError = false
     @State private var errorMessage = ""
     @State private var countdown = 0
     @State private var countdownTask: Task<Void, Never>?
@@ -31,6 +33,14 @@ struct LoginScreen: View {
 
     private enum LoginField {
         case phone, code, password
+    }
+
+    private var isPadLayout: Bool {
+        horizontalSizeClass == .regular
+    }
+
+    private var headerHeight: CGFloat {
+        verticalSizeClass == .compact ? 112 : (isPadLayout ? 168 : 176)
     }
 
     var body: some View {
@@ -43,9 +53,11 @@ struct LoginScreen: View {
                 header
                 ScrollView(showsIndicators: false) {
                     formCard
-                        .padding(.horizontal, 24)
-                        .padding(.top, 24)
-                        .padding(.bottom, 20)
+                        .frame(maxWidth: isPadLayout ? 440 : .infinity)
+                        .padding(.horizontal, isPadLayout ? 40 : 24)
+                        .padding(.top, isPadLayout ? 32 : 24)
+                        .padding(.bottom, 28)
+                        .frame(maxWidth: .infinity)
                 }
             }
         }
@@ -58,16 +70,13 @@ struct LoginScreen: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .scaleEffect(1.2)
                 }
+                .allowsHitTesting(true)
             }
-        }
-        .alert("提示", isPresented: $showError) {
-            Button("确定") {}
-        } message: {
-            Text(errorMessage)
         }
         .onChange(of: loginWay) { _ in
             verifyCode = ""
             password = ""
+            errorMessage = ""
         }
         .onDisappear {
             countdownTask?.cancel()
@@ -83,18 +92,32 @@ struct LoginScreen: View {
             )
             .ignoresSafeArea(edges: .top)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 36, height: 36)
-                        .background(Color.white.opacity(0.18))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.18))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("返回")
 
-                Spacer(minLength: 8)
+                    Spacer()
+
+                    Button(action: onBack) {
+                        Text("先逛逛")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Color.white.opacity(0.18))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 Text("绩满满")
                     .font(.system(size: 28, weight: .bold))
@@ -103,11 +126,11 @@ struct LoginScreen: View {
                     .font(.system(size: 14))
                     .foregroundColor(Color.white.opacity(0.88))
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, isPadLayout ? 40 : 24)
             .padding(.top, 8)
-            .padding(.bottom, 28)
+            .padding(.bottom, 20)
         }
-        .frame(height: 188)
+        .frame(height: headerHeight)
     }
 
     private var formCard: some View {
@@ -122,7 +145,7 @@ struct LoginScreen: View {
             }
 
             labeledField("手机号") {
-                TextField("请输入手机号", text: $phone)
+                TextField("请输入11位手机号", text: $phone)
                     .keyboardType(.numberPad)
                     .textContentType(.telephoneNumber)
                     .focused($focusedField, equals: .phone)
@@ -179,6 +202,14 @@ struct LoginScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 4)
 
+            if !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.system(size: 13))
+                    .foregroundColor(Color(hex: "DC2626"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Button(action: submit) {
                 Text(mode == .login ? "登录" : "注册")
                     .font(.system(size: 16, weight: .semibold))
@@ -199,6 +230,14 @@ struct LoginScreen: View {
             }
             .buttonStyle(.plain)
             .padding(.top, 4)
+
+            Button(action: onBack) {
+                Text("暂不登录，先浏览首页")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppColors.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 8)
         }
     }
 
@@ -238,13 +277,21 @@ struct LoginScreen: View {
             Text("阅读并同意")
                 .font(.system(size: 13))
                 .foregroundColor(Color(hex: "333333"))
-            Link("《用户协议》", destination: URL(string: AgreementURL.userAgreement)!)
-                .font(.system(size: 13))
+            Button("《用户协议》") {
+                SafariOpen.page(AgreementURL.userAgreement)
+            }
+            .font(.system(size: 13))
+            .buttonStyle(.plain)
+            .foregroundColor(AppColors.primary)
             Text("与")
                 .font(.system(size: 13))
                 .foregroundColor(Color(hex: "333333"))
-            Link("《隐私协议》", destination: URL(string: AgreementURL.privacyPolicy)!)
-                .font(.system(size: 13))
+            Button("《隐私协议》") {
+                SafariOpen.page(AgreementURL.privacyPolicy)
+            }
+            .font(.system(size: 13))
+            .buttonStyle(.plain)
+            .foregroundColor(AppColors.primary)
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -254,13 +301,14 @@ struct LoginScreen: View {
         verifyCode = ""
         password = ""
         loginWay = .password
+        errorMessage = ""
         hideKeyboard()
     }
 
     private func sendCode() {
         let trimmed = phone.trimmingCharacters(in: .whitespaces)
         guard trimmed.range(of: "^1[3-9]\\d{9}$", options: .regularExpression) != nil else {
-            presentError("请输入正确的手机号")
+            presentError("请输入正确的11位手机号")
             return
         }
         let type = mode == .register ? "member_register" : "member_phone_login"
@@ -269,6 +317,7 @@ struct LoginScreen: View {
             let result = await ApiService.shared.sendVerifyCode(phone: trimmed, type: type)
             loading = false
             if result.success {
+                errorMessage = ""
                 startCountdown()
             } else {
                 presentError(result.message)
@@ -290,12 +339,12 @@ struct LoginScreen: View {
 
     private func submit() {
         guard checked else {
-            presentError("请阅读并同意用户协议和隐私协议")
+            presentError("请先勾选并阅读用户协议和隐私协议")
             return
         }
         let trimmedPhone = phone.trimmingCharacters(in: .whitespaces)
         guard trimmedPhone.range(of: "^1[3-9]\\d{9}$", options: .regularExpression) != nil else {
-            presentError("请输入正确的手机号")
+            presentError("请输入正确的11位手机号")
             return
         }
 
@@ -352,7 +401,6 @@ struct LoginScreen: View {
 
     private func presentError(_ message: String) {
         errorMessage = message
-        showError = true
     }
 
     private func hideKeyboard() {
