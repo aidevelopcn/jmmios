@@ -18,6 +18,7 @@ struct ProfileScreenScaffold<Content: View>: View {
 struct ProfileSimpleTopBar: View {
     let title: String
     let onBack: () -> Void
+    var barBackground: Color = .white
 
     var body: some View {
         ZStack {
@@ -28,6 +29,8 @@ struct ProfileSimpleTopBar: View {
                         .renderingMode(.original)
                         .scaledToFit()
                         .frame(width: 20, height: 20)
+                        .frame(width: 44, height: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 Spacer(minLength: 0)
@@ -39,7 +42,7 @@ struct ProfileSimpleTopBar: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
-        .background(Color.white)
+        .background(barBackground)
     }
 }
 

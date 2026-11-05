@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import UIKit
 
 // MARK: - AI 答疑界面（对齐 Android AiChatScreen）
 struct AiChatView: View {
@@ -16,13 +17,18 @@ struct AiChatView: View {
     @State private var messages: [ChatMessage] = []
     @State private var inputText = ""
     @State private var isLoading = false
-    @State private var loadingText = "思考中..."
+    @State private var loadingText = "正在思考"
     @State private var sessionId = UUID().uuidString
     @State private var showHistory = false
     @State private var conversationList: [ConversationItem] = []
     @State private var historyLoading = false
     @State private var historySubjectFilter = "全部"
     @State private var conversationToDelete: ConversationItem?
+    @State private var subjectToDelete: String?
+    @State private var newSubjectPrompt: String?
+    @State private var showDeleteSubjectAlert = false
+    @State private var showNewSubjectAlert = false
+    @State private var showNewSubjectPicker = false
     @State private var deleteInProgress = false
     @State private var agentsLoading = true
     @State private var qaMatchedSubjects: [String] = []
@@ -112,13 +118,19 @@ struct AiChatView: View {
                 ImageCropDialogView(
                     sourceImage: image,
                     initialRatio: cropInitialRatio,
-                    allowRetake: cropFromCamera,
+                    allowRetake: true,
+                    retakeLabel: cropFromCamera ? "重拍" : "重选",
                     onRetake: {
+                        let fromCamera = cropFromCamera
                         showCropDialog = false
                         cropSourceImage = nil
                         cropInitialRatio = nil
                         cropFromCamera = false
-                        showCameraOverlay = true
+                        if fromCamera {
+                            showCameraOverlay = true
+                        } else {
+                            showAlbumPicker = true
+                        }
                     },
                     onCancel: {
                         showCropDialog = false
@@ -175,6 +187,7 @@ struct AiChatView: View {
         }
         .onAppear {
             onHistoryVisibleChanged(showHistory)
+            MarkdownWebViewPool.shared.prewarm()
             loadQaBootstrap()
         }
         .alert("删除该会话？", isPresented: Binding(
@@ -190,6 +203,7 @@ struct AiChatView: View {
         } message: {
             Text("删除后无法恢复")
         }
+        .background(qaSubjectDialogs)
         .onChange(of: showCameraOverlay) { _ in
             updateCameraOverlayVisible()
         }
@@ -234,9 +248,10 @@ struct AiChatView: View {
                     Spacer(minLength: 0)
                 }
 
-                Text("AI答疑")
+                Text(selectedQaSubject.isEmpty ? "AI答疑" : "\(selectedQaSubject)·答疑·")
                     .font(.system(size: 15))
                     .foregroundColor(Color(hex: "2D3748"))
+                    .lineLimit(1)
 
                 HStack {
                     Spacer(minLength: 0)
@@ -274,8 +289,8 @@ struct AiChatView: View {
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    if messages.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    if selectedQaSubject.isEmpty {
                         QaWelcomePanel(
                             loading: agentsLoading,
                             hasRegisteredSubjects: !qaMatchedSubjects.isEmpty,
@@ -296,18 +311,24 @@ struct AiChatView: View {
                                     message: message,
                                     isStreaming: message.isStreaming && message.id == activeStreamMessageId,
                                     streamingContent: activeStreamContent,
-                                    waitingHint: uploadingImage ? "上传图片中" : (isLoading ? loadingText : nil)
+                                    waitingHint: uploadingImage ? "上传图片中" : (isLoading ? "正在思考" : nil)
                                 )
-                                
+                                if !message.isStreaming && !message.content.isEmpty && !QaHelpers.isStreamErrorChunk(message.content) {
+                                    Text("本内容由AI生成")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Color(hex: "94A3B8"))
+                                        .padding(.top, 8)
+                                        .padding(.leading, 2)
+                                }
                                 if !message.isStreaming && !message.content.isEmpty {
                                     HStack(spacing: 16) {
                                         qaActionButton(system: "doc.on.doc", label: "复制", active: false) {
                                             copyText(message.content)
                                         }
-                                        qaActionButton(system: qaFavoriteId > 0 ? "star.fill" : "star", label: "收藏", active: qaFavoriteId > 0) {
+                                        qaActionButton(system: (message.favoriteId > 0 || qaFavoriteId > 0) ? "star.fill" : "star", label: "收藏", active: message.favoriteId > 0 || qaFavoriteId > 0) {
                                             toggleFavorite(type: "0", message: message)
                                         }
-                                        qaActionButton(system: qaWrongId > 0 ? "exclamationmark.circle.fill" : "exclamationmark.circle", label: "加入错题", active: qaWrongId > 0) {
+                                        qaActionButton(system: (message.wrongId > 0 || qaWrongId > 0) ? "exclamationmark.circle.fill" : "exclamationmark.circle", label: "加入错题", active: message.wrongId > 0 || qaWrongId > 0) {
                                             toggleFavorite(type: "1", message: message)
                                         }
                                     }
@@ -332,29 +353,6 @@ struct AiChatView: View {
     // MARK: - 输入栏
     private var inputBar: some View {
         VStack(spacing: 0) {
-            if qaChatConfig.modes.count > 1 {
-                HStack(spacing: 8) {
-                    ForEach(qaChatConfig.modes) { item in
-                        Button(action: {
-                            selectedQaMode = item.key
-                            selectedQaProvider = QaHelpers.providerForQaMode(config: qaChatConfig, modeKey: item.key)
-                        }) {
-                            Text(QaHelpers.shortQaModeLabel(item.label))
-                                .font(.system(size: 12))
-                                .foregroundColor(selectedQaMode == item.key ? .white : Color(hex: "64748B"))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 36)
-                                .background(Capsule().fill(selectedQaMode == item.key ? Color(hex: "00DCC8") : Color.white))
-                                .overlay(Capsule().stroke(selectedQaMode == item.key ? Color(hex: "00DCC8") : Color(hex: "E2E8F0"), lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
-                .padding(.bottom, 2)
-                .background(Color(hex: "F5F7FA"))
-            }
             if let img = pendingImage {
                 HStack(spacing: 12) {
                     Button(action: { showPendingImagePreview = true }) {
@@ -376,6 +374,31 @@ struct AiChatView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
+            }
+            if qaChatConfig.modes.count > 1 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(qaChatConfig.modes) { item in
+                            let active = selectedQaMode == item.key
+                            Button(action: {
+                                selectedQaMode = item.key
+                                selectedQaProvider = QaHelpers.providerForQaMode(config: qaChatConfig, modeKey: item.key)
+                            }) {
+                                Text(item.label)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(active ? .white : Color(hex: "64748B"))
+                                    .frame(width: 72, height: 32)
+                                    .background(Capsule().fill(active ? Color(hex: "4ECDC4") : Color.white))
+                                    .overlay(Capsule().stroke(active ? Color(hex: "4ECDC4") : Color(hex: "E2E8F0"), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 2)
+                .padding(.bottom, 12)
+                .background(Color(hex: "F5F7FA"))
             }
 
             HStack(alignment: .center, spacing: 0) {
@@ -426,7 +449,8 @@ struct AiChatView: View {
                     .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
             )
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.top, 0)
+            .padding(.bottom, 16)
         }
         .background(Color(hex: "F5F7FA"))
     }
@@ -441,6 +465,11 @@ struct AiChatView: View {
             onClose: { showHistory = false },
             onSelect: loadConversation,
             onDelete: { conversationToDelete = $0 },
+            onCreateSubject: { createQaSubject($0) },
+            onDeleteSubject: {
+                subjectToDelete = $0
+                showDeleteSubjectAlert = true
+            },
             onOpenHome: {
                 showHistory = false
                 onOpenHome()
@@ -534,7 +563,11 @@ struct AiChatView: View {
         let waitingHint: String?
 
         private var displayContent: String {
-            isStreaming ? streamingContent : message.content
+            let live = streamingContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            if isStreaming {
+                return live.isEmpty ? message.content : streamingContent
+            }
+            return message.content.isEmpty ? streamingContent : message.content
         }
 
         @State private var webHeight: CGFloat
@@ -544,29 +577,40 @@ struct AiChatView: View {
             self.isStreaming = isStreaming
             self.streamingContent = streamingContent
             self.waitingHint = waitingHint
-            _webHeight = State(initialValue: MarkdownWebViewPool.shared.cachedHeight(for: message.id))
+            let cached = MarkdownWebViewPool.shared.cachedHeight(for: message.id)
+            _webHeight = State(initialValue: cached > 48 ? cached : 160)
+        }
+
+        private var assistantText: some View {
+            Text(displayContent)
+                .font(.system(size: 14))
+                .foregroundColor(Color(hex: "2D3748"))
+                .lineSpacing(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 8)
+                .padding(.horizontal, 4)
         }
         
         var body: some View {
-            Group {
-                if displayContent.isEmpty && isStreaming {
-                    StreamingAssistantBubble(content: "", waitingHint: waitingHint)
-                } else if MathHTMLBuilder.needsRichRendering(displayContent) {
+            ZStack(alignment: .leading) {
+                if !displayContent.isEmpty || isStreaming {
                     MarkdownMathBubbleView(
                         messageId: message.id,
                         content: displayContent,
                         isStreaming: isStreaming,
                         height: $webHeight
                     )
-                    .frame(height: webHeight)
-                } else if !displayContent.isEmpty {
-                    Text(displayContent)
-                        .font(.system(size: 14))
-                        .foregroundColor(Color(hex: "2D3748"))
-                        .lineSpacing(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, isStreaming ? 8 : 0)
-                        .padding(.horizontal, 4)
+                    .frame(maxWidth: displayContent.isEmpty ? 1 : .infinity)
+                    .frame(height: displayContent.isEmpty ? 1 : max(webHeight, 80))
+                    .padding(.horizontal, displayContent.isEmpty ? 0 : 12)
+                    .padding(.vertical, displayContent.isEmpty ? 0 : 10)
+                    .background(displayContent.isEmpty ? Color.clear : Color.white, in: RoundedRectangle(cornerRadius: 16))
+                    .padding(.top, displayContent.isEmpty ? 0 : 8)
+                    .opacity(displayContent.isEmpty ? 0 : 1)
+                    .allowsHitTesting(!displayContent.isEmpty)
+                }
+                if displayContent.isEmpty && isStreaming {
+                    StreamingAssistantBubble(content: "", waitingHint: waitingHint)
                 }
             }
             .padding(.top, 2)
@@ -664,6 +708,7 @@ struct AiChatView: View {
         qaFavoriteId = 0
         qaWrongId = 0
         selectedQaSubject = ""
+        presentToast("已在新对话中，科目已清空")
     }
 
     private func loadQaBootstrap() {
@@ -770,7 +815,7 @@ struct AiChatView: View {
             markLastStreamingDone()
         }
         isLoading = false
-        loadingText = "思考中..."
+        loadingText = "正在思考"
     }
     
     private func sendMessage() {
@@ -785,17 +830,19 @@ struct AiChatView: View {
         inputText = ""
         dismissKeyboard()
         isLoading = true
-        loadingText = "思考中..."
+        loadingText = "正在思考"
 
         let userMsg = ChatMessage(role: "user", content: sendText)
         let assistantId = UUID().uuidString
         messages.append(userMsg)
+        let sentMode = qaChatConfig.modes.first(where: { $0.key == selectedQaMode })?.label ?? "答案模式"
         messages.append(ChatMessage(
             id: assistantId,
             role: "assistant",
             content: "",
             isStreaming: true,
-            relatedQuestion: sendText
+            relatedQuestion: sendText,
+            qaMode: sentMode
         ))
         activeStreamMessageId = assistantId
         activeStreamContent = ""
@@ -809,7 +856,10 @@ struct AiChatView: View {
                     uploadingImage = true
                     loadingText = "上传图片中..."
                 }
-                if let data = image.jpegData(compressionQuality: 0.92),
+                let data = await Task.detached(priority: .userInitiated) {
+                    AiImageCropProcessor.jpegForUpload(image)
+                }.value
+                if let data,
                    let url = await apiService.uploadFile(
                     imageData: data,
                     fileName: AiImageCropProcessor.nextShortImageName(prefix: "img"),
@@ -855,13 +905,16 @@ struct AiChatView: View {
                     qaFavoriteId = 0
                     qaWrongId = 0
                 }
-                sendSubject = QaHelpers.inferQaSubject(prompt: sendText, registered: qaMatchedSubjects, selected: selectedQaSubject)
-                loadingText = sendSubject.isEmpty ? "正在识别科目..." : "思考中..."
+                sendSubject = uploadedFromPending
+                    ? QaHelpers.inferQaSubjectFromText(sendText, registered: qaMatchedSubjects)
+                    : QaHelpers.inferQaSubject(prompt: sendText, registered: qaMatchedSubjects, selected: selectedQaSubject)
+                loadingText = (sendSubject.isEmpty && !uploadedFromPending) ? "正在识别科目..." : "正在思考"
                 if !uploadedFromPending {
                     history = buildQaChatHistory(excludeIds: excludeIds)
                 }
             }
 
+            let detected = NSMutableString()
             await apiService.streamChat(
                 token: token,
                 prompt: sendText,
@@ -873,22 +926,25 @@ struct AiChatView: View {
                 mode: qaChatConfig.modes.first(where: { $0.key == selectedQaMode })?.label ?? "答案模式",
                 history: history,
                 onSubject: { name in
-                    Task { @MainActor in
-                        let subject = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !subject.isEmpty else { return }
-                        if selectedQaSubject.isEmpty { selectedQaSubject = subject }
-                        if !qaMatchedSubjects.contains(subject) {
-                            qaMatchedSubjects.append(subject)
-                        }
-                        if isLoading { loadingText = "思考中..." }
+                    let subject = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !subject.isEmpty else { return }
+                    if selectedQaSubject != subject {
+                        let hadSubject = !selectedQaSubject.isEmpty
+                        selectedQaSubject = subject
+                        historySubjectFilter = subject
+                        if hadSubject { presentToast("已切换科目：\(subject)") }
                     }
+                    if isLoading { loadingText = "正在思考" }
+                },
+                onNewSubject: { name in
+                    let subject = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !subject.isEmpty else { return }
+                    detected.setString(subject)
+                    if selectedQaSubject != subject { selectedQaSubject = subject }
+                    if isLoading { loadingText = "正在思考" }
                 }
             ) { chunk in
-                Task { @MainActor in
-                    guard !chunk.isEmpty else { return }
-                    isLoading = false
-                    activeStreamContent += chunk
-                }
+                applyStreamChunk(assistantId: assistantId, chunk: chunk)
             }
 
             await MainActor.run {
@@ -898,8 +954,12 @@ struct AiChatView: View {
                 let finalAnswer = activeStreamContent
                 commitActiveStream(assistantId: assistantId, markDone: true)
                 isLoading = false
-                loadingText = "思考中..."
+                loadingText = "正在思考"
                 streamTask = nil
+                if detected.length > 0 {
+                    newSubjectPrompt = detected as String
+                    showNewSubjectAlert = true
+                }
                 if !finalAnswer.isEmpty, !QaHelpers.isStreamErrorChunk(finalAnswer) {
                     persistAndRefresh(
                         prompt: sendText,
@@ -978,14 +1038,24 @@ struct AiChatView: View {
     }
 
     @MainActor
-    private func commitActiveStream(assistantId: String, markDone: Bool) {
-        guard let idx = messages.firstIndex(where: { $0.id == assistantId }) else { return }
-        var msg = messages[idx]
-        if !activeStreamContent.isEmpty {
-            msg.content = activeStreamContent
+    private func applyStreamChunk(assistantId: String, chunk: String) {
+        guard !chunk.isEmpty else { return }
+        isLoading = false
+        activeStreamContent += chunk
+        if let idx = messages.firstIndex(where: { $0.id == assistantId }), messages[idx].content.isEmpty {
+            messages[idx].isStreaming = true
         }
-        msg.isStreaming = !markDone
-        messages[idx] = msg
+    }
+
+    @MainActor
+    private func commitActiveStream(assistantId: String, markDone: Bool) {
+        var next = messages
+        guard let idx = next.firstIndex(where: { $0.id == assistantId }) else { return }
+        if !activeStreamContent.isEmpty {
+            next[idx].content = activeStreamContent
+        }
+        next[idx].isStreaming = !markDone
+        messages = next
         if markDone {
             activeStreamMessageId = nil
             activeStreamContent = ""
@@ -1061,6 +1131,114 @@ struct AiChatView: View {
         }
     }
 
+    private var qaSubjectDialogs: some View {
+        EmptyView()
+            .alert("删除科目", isPresented: $showDeleteSubjectAlert) {
+                Button("取消", role: .cancel) { subjectToDelete = nil }
+                Button("删除", role: .destructive) {
+                    if let name = subjectToDelete { deleteQaSubject(name) }
+                    subjectToDelete = nil
+                }
+            } message: {
+                Text("该科目不再出现在科目下拉里，会话记录本身不受影响。")
+            }
+            .alert("发现新科目", isPresented: $showNewSubjectAlert) {
+                Button("加入科目表") {
+                    if let name = newSubjectPrompt { acceptNewSubject(name) }
+                }
+                Button("归到已有科目") { showNewSubjectPicker = true }
+                Button("跳过", role: .cancel) {
+                    presentToast("已跳过，科目登记不受影响")
+                    newSubjectPrompt = nil
+                }
+            } message: {
+                Text("「\(newSubjectPrompt ?? "")」要加入答疑科目列表吗？")
+            }
+            .confirmationDialog("归到已有科目", isPresented: $showNewSubjectPicker, titleVisibility: .visible) {
+                ForEach(qaMatchedSubjects.filter { $0 != "全部" && $0 != "未归类" }, id: \.self) { name in
+                    Button(name) { reassignConversationSubject(name) }
+                }
+                Button("其他科目") { reassignConversationSubject("其他科目") }
+                Button("取消", role: .cancel) { showNewSubjectPicker = false }
+            }
+    }
+
+    private func createQaSubject(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        Task {
+            let ok = await AcademicApi.addQaSubjectName(trimmed)
+            await MainActor.run {
+                if ok {
+                    qaMatchedSubjects = QaSubjectTombstone.filter(
+                        qaMatchedSubjects.contains(trimmed) ? qaMatchedSubjects : qaMatchedSubjects + [trimmed]
+                    )
+                    selectedQaSubject = trimmed
+                    historySubjectFilter = trimmed
+                    presentToast("会话记录中已加入「\(trimmed)」")
+                } else {
+                    presentToast("添加科目失败，请稍后重试")
+                }
+            }
+        }
+    }
+
+    private func deleteQaSubject(_ name: String) {
+        Task {
+            let ok = await AcademicApi.removeQaSubjectName(name)
+            await MainActor.run {
+                if ok {
+                    qaMatchedSubjects = QaSubjectTombstone.filter(qaMatchedSubjects.filter { $0 != name })
+                    if selectedQaSubject == name { selectedQaSubject = "" }
+                    if historySubjectFilter == name { historySubjectFilter = "全部" }
+                } else {
+                    presentToast("删除科目失败")
+                }
+            }
+        }
+    }
+
+    private func acceptNewSubject(_ name: String) {
+        guard apiService.token?.isEmpty == false else {
+            newSubjectPrompt = nil
+            onNeedLogin()
+            return
+        }
+        Task {
+            let ok = await AcademicApi.addQaSubjectName(name)
+            await MainActor.run {
+                if ok {
+                    qaMatchedSubjects = QaSubjectTombstone.filter(
+                        qaMatchedSubjects.contains(name) ? qaMatchedSubjects : qaMatchedSubjects + [name]
+                    )
+                    selectedQaSubject = name
+                    historySubjectFilter = name
+                    newSubjectPrompt = nil
+                    showNewSubjectAlert = false
+                    showNewSubjectPicker = false
+                    presentToast("会话记录中已加入「\(name)」")
+                } else {
+                    presentToast("添加科目失败，请稍后重试")
+                }
+            }
+            if ok {
+                _ = await apiService.setConversationSubject(sessionId: sessionId, subject: name)
+            }
+        }
+    }
+
+    private func reassignConversationSubject(_ name: String) {
+        selectedQaSubject = name
+        historySubjectFilter = name
+        newSubjectPrompt = nil
+        showNewSubjectAlert = false
+        showNewSubjectPicker = false
+        presentToast("已归到「\(name)」")
+        Task {
+            _ = await apiService.setConversationSubject(sessionId: sessionId, subject: name)
+        }
+    }
+
     private func conversationTimeLine(_ chat: ConversationItem) -> String {
         if chat.startedAt > 0 { return QaHelpers.formatQaListTime(chat.startedAt) }
         return QaHelpers.formatQaListTime(chat.startedAtText)
@@ -1075,6 +1253,8 @@ private struct QaHistoryDrawerView: View {
     var onClose: () -> Void
     var onSelect: (ConversationItem) -> Void
     var onDelete: (ConversationItem) -> Void
+    var onCreateSubject: (String) -> Void
+    var onDeleteSubject: (String) -> Void
     var onOpenHome: () -> Void
     var onOpenMine: () -> Void
 
@@ -1085,14 +1265,38 @@ private struct QaHistoryDrawerView: View {
         )
     }
 
+    private var conversationCounts: [String: Int] {
+        let concrete = chips.filter { $0 != "全部" && $0 != "其他科目" && $0 != "未归类" }
+        var out: [String: Int] = ["全部": conversationList.count]
+        for name in concrete {
+            out[name] = conversationList.filter {
+                QaHelpers.conversationMatchesQaSubject(subjectName: $0.subjectName, title: $0.title, filter: name)
+            }.count
+        }
+        out["其他科目"] = conversationList.filter { item in
+            !concrete.contains {
+                QaHelpers.conversationMatchesQaSubject(subjectName: item.subjectName, title: item.title, filter: $0)
+            }
+        }.count
+        return out
+    }
+
     private var visible: [ConversationItem] {
-        conversationList.filter {
-            historySubjectFilter == "全部"
-                || QaHelpers.conversationMatchesQaSubject(
-                    subjectName: $0.subjectName,
-                    title: $0.title,
-                    filter: historySubjectFilter
-                )
+        if historySubjectFilter == "全部" { return conversationList }
+        let concrete = chips.filter { $0 != "全部" && $0 != "其他科目" && $0 != "未归类" }
+        if historySubjectFilter == "其他科目" {
+            return conversationList.filter { item in
+                !concrete.contains {
+                    QaHelpers.conversationMatchesQaSubject(subjectName: item.subjectName, title: item.title, filter: $0)
+                }
+            }
+        }
+        return conversationList.filter {
+            QaHelpers.conversationMatchesQaSubject(
+                subjectName: $0.subjectName,
+                title: $0.title,
+                filter: historySubjectFilter
+            )
         }
     }
 
@@ -1108,7 +1312,7 @@ private struct QaHistoryDrawerView: View {
                     .font(.system(size: 17))
                     .foregroundColor(Color(hex: "2D3748"))
                     .padding(.horizontal, 16)
-                    .padding(.top, 40)
+                    .padding(.top, 12 + drawerSafeInsets.top)
                     .padding(.bottom, 12)
 
                 if historyLoading {
@@ -1133,38 +1337,42 @@ private struct QaHistoryDrawerView: View {
                         footerButton("我的", action: onOpenMine)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 14)
+                    .padding(.top, 14)
+                    .padding(.bottom, 14 + drawerSafeInsets.bottom)
                 }
             }
             .frame(width: UIScreen.main.bounds.width * 0.82)
             .frame(maxHeight: .infinity)
             .background(Color.white)
+            .clipShape(LeadingDrawerShape(radius: 22))
+            .ignoresSafeArea()
         }
+        .ignoresSafeArea()
         .transition(.opacity)
         .zIndex(10)
     }
 
+    private var drawerSafeInsets: UIEdgeInsets {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow }?.safeAreaInsets ?? UIEdgeInsets(top: 44, left: 0, bottom: 34, right: 0)
+    }
+
     @ViewBuilder
     private var chipRow: some View {
-        if chips.count > 1 {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(chips, id: \.self) { subject in
-                        Button(action: { historySubjectFilter = subject }) {
-                            Text(subject)
-                                .font(.system(size: 12))
-                                .foregroundColor(historySubjectFilter == subject ? .white : Color(hex: "64748B"))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(Capsule().fill(historySubjectFilter == subject ? Color(hex: "00DCC8") : Color(hex: "F1F5F9")))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-            }
-        }
+        QaSubjectPicker(
+            subjects: chips,
+            selected: historySubjectFilter,
+            counts: conversationCounts,
+            otherDesc: "尚未归类的会话",
+            onSelect: { historySubjectFilter = $0 },
+            onCreate: onCreateSubject,
+            onDelete: onDeleteSubject
+        )
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .zIndex(2)
     }
 
     @ViewBuilder
@@ -1274,6 +1482,35 @@ private struct QaWelcomePanel: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+private struct LeadingDrawerShape: Shape {
+    var radius: CGFloat = 22
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(radius, rect.width / 2, rect.height / 2)
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX - r, y: 0))
+        path.addArc(
+            center: CGPoint(x: rect.maxX - r, y: r),
+            radius: r,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(0),
+            clockwise: false
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        path.addArc(
+            center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
+            radius: r,
+            startAngle: .degrees(0),
+            endAngle: .degrees(90),
+            clockwise: false
+        )
+        path.addLine(to: CGPoint(x: 0, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }
 

@@ -1,8 +1,8 @@
 import Foundation
 
 enum QaHelpers {
-    static let welcomeHintEmpty = "请先登记科目再发起答疑，方便按科目留存你的答疑记录"
-    static let welcomeHintPlus = "提交新问题时，记得右上角点「+」打开新窗口"
+    static let welcomeHintEmpty = "在首页→科目登记，登记科目后，答疑记录可按科目筛选"
+    static let welcomeHintPlus = "新题请可点右上角“+”新建会话"
 
     private static let subjectAliases: [(String, String)] = [
         ("线代", "线性代数"),
@@ -104,11 +104,15 @@ enum QaHelpers {
             out.append(n)
         }
         add("全部")
-        registered.forEach(add)
+        registered.forEach {
+            let n = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+            if n != "全部" && n != "未归类" && n != "其他科目" { add(n) }
+        }
         extra.forEach {
             let n = $0.trimmingCharacters(in: .whitespacesAndNewlines)
-            if n != "全部" && n != "未归类" { add(n) }
+            if n != "全部" && n != "未归类" && n != "其他科目" { add(n) }
         }
+        add("其他科目")
         return out
     }
 
@@ -246,7 +250,139 @@ enum QaHelpers {
 
     static func isStreamErrorChunk(_ text: String) -> Bool {
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.contains("请求失败") || value.contains("答疑服务") || value.contains("没有返回内容")
+        let exact = [
+            "模型未返回内容",
+            "模型未返回内容，请稍后重试",
+            "AI 服务异常，请稍后重试",
+            "服务异常，请稍后重试",
+            "未收到回复，请确认网络正常或稍后重试",
+            "答疑服务已连接，但没有返回内容，请再试一次",
+            "请求失败，请稍后重试。"
+        ]
+        if exact.contains(value) { return true }
+        if value.hasPrefix("答疑服务异常") { return true }
+        return false
+    }
+
+    static func isQaImagePlaceholder(_ raw: String) -> Bool {
+        var body = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if body.hasPrefix("[图片]") {
+            body = String(body.dropFirst(4)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let regex = try? NSRegularExpression(pattern: #"^【[^】]{1,40}】"#) {
+            body = regex.stringByReplacingMatches(in: body, range: NSRange(body.startIndex..., in: body), withTemplate: "")
+        }
+        body = body.replacingOccurrences(of: #"\s+"#, with: "", options: .regularExpression)
+        if body.isEmpty { return true }
+        return ["图片", "图片错题", "图片题目", "错题图片", "题目图片", "[图片]"].contains(body)
+    }
+
+    static func isWrongBookCameraUpload(_ item: AskRecordItem) -> Bool {
+        if item.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
+        if !item.conversationId.isEmpty || !item.sessionId.isEmpty { return false }
+        if !item.answerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
+        let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let question = item.questionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title == "图片错题" || question == "图片错题"
+    }
+
+    static func askRecordSubjectLine(
+        _ item: AskRecordItem,
+        conversations: [ConversationItem],
+        registered: [String]
+    ) -> String {
+        let linked = conversations.first { chat in
+            (!item.conversationId.isEmpty && chat.id == item.conversationId) ||
+            (!item.sessionId.isEmpty && chat.sessionId == item.sessionId)
+        }
+        let source = [item.answerText, item.title, item.questionText, linked?.preview ?? ""].joined(separator: "\n")
+        var subject = item.subjectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if subject.isEmpty { subject = linked?.subjectName.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+        if subject.isEmpty, let match = item.title.range(of: #"^【([^】]{1,20})】"#, options: .regularExpression) {
+            subject = String(item.title[match].dropFirst().dropLast())
+        }
+        if subject.isEmpty { subject = inferQaSubjectFromText(source, registered: registered) }
+        return subject
+    }
+
+    static func askRecordHeadline(
+        _ item: AskRecordItem,
+        conversations: [ConversationItem],
+        registered: [String]
+    ) -> String {
+        let linked = conversations.first { chat in
+            (!item.conversationId.isEmpty && chat.id == item.conversationId) ||
+            (!item.sessionId.isEmpty && chat.sessionId == item.sessionId)
+        }
+        let source = [item.answerText, item.title, item.questionText, linked?.preview ?? ""].joined(separator: "\n")
+        var knowledge = sanitizeQaKnowledgeName(item.knowledgePoint)
+        if knowledge.isEmpty { knowledge = sanitizeQaKnowledgeName(linked?.knowledgePoint ?? "") }
+        if knowledge.isEmpty { knowledge = extractQaKnowledgePoint(source) }
+        if knowledge == "未命名会话" || knowledge == "未命名问题" { knowledge = "" }
+        if !knowledge.isEmpty { return knowledge }
+        var ownQuestion = item.questionText
+        if let regex = try? NSRegularExpression(pattern: #"^【[^】]{1,40}】"#) {
+            ownQuestion = regex.stringByReplacingMatches(
+                in: ownQuestion,
+                range: NSRange(ownQuestion.startIndex..., in: ownQuestion),
+                withTemplate: ""
+            )
+        }
+        ownQuestion = ownQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !ownQuestion.isEmpty && !isQaImagePlaceholder(ownQuestion) {
+            return String(ownQuestion.replacingOccurrences(of: "\n", with: " ").prefix(80))
+        }
+        let line = askRecordTitleLine(item, conversations: conversations, registered: registered)
+        if line.hasPrefix("【"), let close = line.firstIndex(of: "】") {
+            let rest = line[line.index(after: close)...].trimmingCharacters(in: .whitespaces)
+            if !rest.isEmpty { return rest }
+        }
+        return line.isEmpty ? "未命名问题" : line
+    }
+
+    static func askRecordTitleLine(
+        _ item: AskRecordItem,
+        conversations: [ConversationItem],
+        registered: [String]
+    ) -> String {
+        let linked = conversations.first { chat in
+            (!item.conversationId.isEmpty && chat.id == item.conversationId) ||
+            (!item.sessionId.isEmpty && chat.sessionId == item.sessionId)
+        }
+        let source = [item.answerText, item.title, item.questionText, linked?.preview ?? ""].joined(separator: "\n")
+        var subject = item.subjectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if subject.isEmpty { subject = linked?.subjectName.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+        if subject.isEmpty, let match = item.title.range(of: #"^【([^】]{1,20})】"#, options: .regularExpression) {
+            subject = String(item.title[match].dropFirst().dropLast())
+        }
+        if subject.isEmpty { subject = inferQaSubjectFromText(source, registered: registered) }
+        var ownQuestion = item.questionText
+        if let regex = try? NSRegularExpression(pattern: #"^【[^】]{1,40}】"#) {
+            ownQuestion = regex.stringByReplacingMatches(
+                in: ownQuestion,
+                range: NSRange(ownQuestion.startIndex..., in: ownQuestion),
+                withTemplate: ""
+            )
+        }
+        ownQuestion = ownQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !ownQuestion.isEmpty && !isQaImagePlaceholder(ownQuestion) {
+            let snippet = String(ownQuestion.replacingOccurrences(of: "\n", with: " ").prefix(36))
+            return subject.isEmpty ? snippet : "【\(subject)】\(snippet)"
+        }
+        let line = conversationTitleLine(
+            ConversationItem(
+                id: linked?.id ?? item.conversationId,
+                title: (linked?.title.isEmpty == false ? linked!.title : item.title),
+                messageCount: linked?.messageCount ?? 0,
+                sessionId: linked?.sessionId ?? item.sessionId,
+                subjectName: subject.isEmpty ? (linked?.subjectName ?? "") : subject,
+                knowledgePoint: item.knowledgePoint.isEmpty ? (linked?.knowledgePoint ?? "") : item.knowledgePoint,
+                preview: source
+            ),
+            registered: registered
+        )
+        if !line.isEmpty && line != "未命名会话" && !isQaImagePlaceholder(line) { return line }
+        return subject.isEmpty ? "未命名问题" : "【\(subject)】"
     }
 
     static func lastReusableImageUrl(_ messages: [ChatMessage], excludeIds: Set<String>) -> String {
@@ -294,8 +430,15 @@ struct QaChoice: Identifiable, Equatable {
 }
 
 struct QaChatConfig {
+    static let defaultModes: [QaChoice] = [
+        QaChoice(key: "answer", label: "答案模式"),
+        QaChoice(key: "qa", label: "讲解模式"),
+        QaChoice(key: "hint", label: "点拨模式"),
+        QaChoice(key: "correct", label: "改错模式")
+    ]
+
     var providers: [QaChoice] = [QaChoice(key: "qwen", label: "通义千问")]
-    var modes: [QaChoice] = [QaChoice(key: "answer", label: "答案模式")]
+    var modes: [QaChoice] = QaChatConfig.defaultModes
     var defaultProvider: String = "qwen"
     var defaultMode: String = "answer"
     var modeProviders: [String: String] = [:]

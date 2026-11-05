@@ -3,6 +3,56 @@ import UIKit
 
 enum AcademicApi {
     private static var base: String { "\(ApiConfig.baseURL)/api/studentAcademic" }
+    private static let cacheLock = NSLock()
+    private static var subjectRegisterCache: [String: (TimeInterval, SubjectRegisterPanel)] = [:]
+
+    private static func subjectRegisterCacheKey(_ semester: String) -> String {
+        "\(ApiService.shared.token ?? "")|\(semester.trimmingCharacters(in: .whitespaces))"
+    }
+
+    static func peekSubjectRegister(semester: String) -> SubjectRegisterPanel? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        let sem = semester.trimmingCharacters(in: .whitespaces)
+        if !sem.isEmpty, let hit = subjectRegisterCache[subjectRegisterCacheKey(sem)] {
+            return hit.1
+        }
+        if sem.isEmpty {
+            let prefix = "\(ApiService.shared.token ?? "")|"
+            return subjectRegisterCache
+                .filter { $0.key.hasPrefix(prefix) }
+                .max(by: { $0.value.0 < $1.value.0 })?
+                .value.1
+        }
+        return nil
+    }
+
+    static func cacheSubjectRegister(_ panel: SubjectRegisterPanel, semester: String) {
+        let resolved = panel.semester.trimmingCharacters(in: .whitespaces).isEmpty ? semester : panel.semester
+        let now = Date().timeIntervalSince1970
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if !resolved.trimmingCharacters(in: .whitespaces).isEmpty {
+            subjectRegisterCache[subjectRegisterCacheKey(resolved)] = (now, panel)
+        }
+        let sem = semester.trimmingCharacters(in: .whitespaces)
+        if !sem.isEmpty, sem != resolved {
+            subjectRegisterCache[subjectRegisterCacheKey(sem)] = (now, panel)
+        }
+    }
+
+    static func clearSubjectRegisterCache() {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        subjectRegisterCache.removeAll()
+    }
+
+    static func prefetchSubjectRegister(semester: String = "") {
+        if peekSubjectRegister(semester: semester) != nil { return }
+        Task {
+            _ = await fetchSubjectRegister(semester: semester)
+        }
+    }
 
     static func fetchSubjectRegister(semester: String = "") async -> Result<SubjectRegisterPanel, Error> {
         let path = semester.isEmpty ? "subjectRegister" : "subjectRegister?semester=\(urlEncode(semester))"
@@ -10,7 +60,9 @@ enum AcademicApi {
             guard codeOK(json), let data = json["data"] as? [String: Any] else {
                 throw AcademicError(msg(json, "加载失败"))
             }
-            return parseSubjectRegisterPanel(data)
+            let panel = parseSubjectRegisterPanel(data)
+            cacheSubjectRegister(panel, semester: semester)
+            return panel
         }
     }
 
@@ -33,7 +85,7 @@ enum AcademicApi {
         return await post("subjectRegisterSave", form: form) { json in
             guard codeOK(json) else { throw AcademicError(msg(json, "保存失败")) }
             let data = json["data"] as? [String: Any] ?? [:]
-            return SubjectRegisterPanel(
+            let panel = SubjectRegisterPanel(
                 semester: stringValue(data["semester"]).isEmpty ? semester : stringValue(data["semester"]),
                 school: stringValue(data["school"]).isEmpty ? school : stringValue(data["school"]),
                 major: stringValue(data["major"]).isEmpty ? major : stringValue(data["major"]),
@@ -44,6 +96,8 @@ enum AcademicApi {
                 classTeacherBound: boolValue(data["classTeacherBound"]),
                 courses: parseSubjectRegisterRows(data["courses"])
             )
+            cacheSubjectRegister(panel, semester: semester)
+            return panel
         }
     }
 
@@ -51,14 +105,18 @@ enum AcademicApi {
         imageUrl: String,
         semester: String,
         courses: [SubjectRegisterRow],
-        mode: String = "timetable"
+        mode: String = "timetable",
+        imageMeta: UploadedImageMeta? = nil
     ) async -> Result<(String, [SubjectRegisterRow]), Error> {
-        let form: [String: String] = [
+        var form: [String: String] = [
             "image_url": imageUrl,
             "semester": semester,
             "mode": mode,
             "courses": jsonString(courses.map { $0.asDict() })
         ]
+        if let imageMeta {
+            form["image_meta"] = imageMeta.asJson()
+        }
         return await post("recognizeSubjectRegister", form: form, timeout: 180) { json in
             guard codeOK(json), let data = json["data"] as? [String: Any] else {
                 throw AcademicError(msg(json, "识别失败"))
@@ -72,6 +130,32 @@ enum AcademicApi {
         guard let json = await academicGet("qaSubjectHint"), codeOK(json),
               let data = json["data"] as? [String: Any] else { return nil }
         return parseQaSubjectHint(data)
+    }
+
+    static func addQaSubjectName(_ subject: String) async -> Bool {
+        let name = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return false }
+        let result = await post("qaSubjectAdd", form: ["subject": name]) { json in
+            codeOK(json)
+        }
+        if case .success(true) = result {
+            QaSubjectTombstone.forget(name)
+            return true
+        }
+        return false
+    }
+
+    static func removeQaSubjectName(_ subject: String) async -> Bool {
+        let name = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return false }
+        let result = await post("qaSubjectDelete", form: ["subject": name]) { json in
+            codeOK(json)
+        }
+        if case .success(true) = result {
+            QaSubjectTombstone.remember(name)
+            return true
+        }
+        return false
     }
 
     static func loadSortedQaSubjectNames(extra: [String] = []) async -> [String] {
@@ -109,11 +193,12 @@ enum AcademicApi {
             }
         }
         extra.forEach { absorb($0, "", "") }
-        return meta.sorted { a, b in
+        let sorted = meta.sorted { a, b in
             if a.value.required != b.value.required { return a.value.required && !b.value.required }
             if a.value.credits != b.value.credits { return a.value.credits > b.value.credits }
             return a.key < b.key
         }.map(\.key)
+        return QaSubjectTombstone.filter(sorted)
     }
 
     static func fetchRegisteredSubjectNamesAllSemesters() async -> [String] {
@@ -132,6 +217,102 @@ enum AcademicApi {
         return names
     }
 
+    static func prefetchMyCourses() {
+        Task { _ = await fetchMyCourses() }
+    }
+
+    static func fetchMyCourses() async -> Result<MyCoursesPayload, Error> {
+        if (ApiService.shared.token ?? "").isEmpty {
+            MyCoursesCache.clear()
+            return .failure(AcademicError("请先登录"))
+        }
+        return await get("myCourses") { json in
+            let payload = try parseMyCoursesPayload(json)
+            MyCoursesCache.save(payload)
+            return payload
+        }
+    }
+
+    static func confirmMyCourseHours(recordId: Int) async -> Result<String, Error> {
+        await post("confirmCourseHours", form: ["record_id": String(recordId)]) { json in
+            if jsonIntCode(json) == 401 { throw AcademicError("请先登录") }
+            guard codeOK(json) else { throw AcademicError(msg(json, "确认失败")) }
+            return msg(json, "确认成功")
+        }
+    }
+
+    static func submitMyCourseRating(
+        courseNo: String,
+        rating1: Double,
+        rating2: Double,
+        comment1: String,
+        comment2: String
+    ) async -> Result<String, Error> {
+        await post("submitCourseRating", form: [
+            "course_no": courseNo,
+            "rating1": String(rating1),
+            "rating2": String(rating2),
+            "comment1": comment1,
+            "comment2": comment2
+        ]) { json in
+            if jsonIntCode(json) == 401 { throw AcademicError("请先登录") }
+            guard codeOK(json) else { throw AcademicError(msg(json, "评价提交失败")) }
+            return msg(json, "评价已提交")
+        }
+    }
+
+    private static func jsonIntCode(_ json: [String: Any]) -> Int {
+        if let i = json["code"] as? Int { return i }
+        if let s = json["code"] as? String { return Int(s) ?? 0 }
+        return 0
+    }
+
+    private static func parseMyCoursesPayload(_ json: [String: Any]) throws -> MyCoursesPayload {
+        if jsonIntCode(json) == 401 { throw AcademicError("请先登录") }
+        guard codeOK(json), let data = json["data"] as? [String: Any] else {
+            throw AcademicError(msg(json, "加载失败"))
+        }
+        let list = data["courses"] as? [[String: Any]] ?? []
+        return MyCoursesPayload(
+            enrolled: boolValue(data["enrolled"]),
+            reason: stringValue(data["reason"]),
+            advisorName: stringValue(data["advisor_name"]),
+            courses: list.map { item in
+                let records = item["records"] as? [[String: Any]] ?? []
+                let evaluation = item["evaluation"] as? [String: Any]
+                return MyCourseItem(
+                    courseNo: stringValue(item["course_no"]),
+                    name: stringValue(item["name"]),
+                    teacherName: stringValue(item["teacher_name"]),
+                    advisorName: stringValue(item["advisor_name"]),
+                    totalHours: doubleValue(item["total_hours"]),
+                    usedHours: doubleValue(item["used_hours"]),
+                    leftHours: doubleValue(item["left_hours"]),
+                    canRate: boolValue(item["can_rate"]),
+                    finished: boolValue(item["finished"])
+                        || stringValue(item["sheet_status"]) == "已结课",
+                    refunded: stringValue(item["sheet_status"]) == "学员退费",
+                    sheetStatus: stringValue(item["sheet_status"]),
+                    evaluation: evaluation.map {
+                        MyCourseEvaluation(
+                            rating1: doubleValue($0["rating1"]),
+                            rating2: doubleValue($0["rating2"])
+                        )
+                    },
+                    records: records.map {
+                        MyCourseRecord(
+                            id: intValue($0["id"]),
+                            date: stringValue($0["date"]),
+                            hours: doubleValue($0["hours"]),
+                            status: stringValue($0["status"]),
+                            confirmable: boolValue($0["confirmable"])
+                        )
+                    }
+                )
+            }
+        )
+    }
+
     private static func parseQaSubjectHint(_ data: [String: Any]) -> QaSubjectHint {
         func names(from key: String) -> [String] {
             var out: [String] = []
@@ -148,9 +329,9 @@ enum AcademicApi {
             }
             return out
         }
-        let unmatched = names(from: "unmatched")
-        let registered = names(from: "registered")
-        let listed = names(from: "subjects")
+        let unmatched = QaSubjectTombstone.filter(names(from: "unmatched"))
+        let registered = QaSubjectTombstone.filter(names(from: "registered"))
+        let listed = QaSubjectTombstone.filter(names(from: "subjects"))
         let display = registered.isEmpty ? (unmatched.isEmpty ? listed : unmatched) : registered
         return QaSubjectHint(
             status: stringValue(data["status"]),
@@ -208,6 +389,7 @@ enum AcademicApi {
         if !baselineCredits.isEmpty { form["baseline_credits"] = baselineCredits }
         return await post("gpaSubmit", form: form) { json in
             guard codeOK(json) else { throw AcademicError(msg(json, "提交失败")) }
+            clearSubjectRegisterCache()
             let data = json["data"] as? [String: Any]
             let text = stringValue(data?["cumulativeGpaDisplay"])
             return text.isEmpty ? "提交成功" : text
@@ -235,14 +417,42 @@ enum AcademicApi {
         return parsed
     }
 
+    static func previewGpaPlan(
+        targetSemester: String,
+        targetGpa: Double,
+        adjustments: [GpaPlanCourse],
+        baselineGpa: String = "",
+        baselineCredits: String = "",
+        futureCredits: [String: String] = [:]
+    ) async -> Result<GpaPlanData, Error> {
+        var form: [String: String] = [
+            "target_semester": targetSemester,
+            "target_gpa": String(targetGpa),
+            "adjustments": jsonString(adjustments.map { $0.asDict() })
+        ]
+        if !baselineGpa.isEmpty { form["baseline_gpa"] = baselineGpa }
+        if !baselineCredits.isEmpty { form["baseline_credits"] = baselineCredits }
+        if !futureCredits.isEmpty { form["future_credits"] = jsonString(futureCredits) }
+        return await post("gpaPlanPreview", form: form) { json in
+            guard codeOK(json) else { throw AcademicError(msg(json, "计算失败")) }
+            return parseGpaPlanPreviewData(
+                json["data"] as? [String: Any],
+                targetSemester: targetSemester,
+                targetGpa: targetGpa,
+                futureCredits: futureCredits
+            )
+        }
+    }
+
     static func saveGpaPlan(
         targetSemester: String,
         targetGpa: Double,
         adjustments: [GpaPlanCourse],
         baselineGpa: String = "",
         baselineCredits: String = "",
-        ruleId: Int = 0
-    ) async -> Result<Void, Error> {
+        ruleId: Int = 0,
+        futureCredits: [String: String] = [:]
+    ) async -> Result<GpaPlanData, Error> {
         var form: [String: String] = [
             "target_semester": targetSemester,
             "target_gpa": String(targetGpa),
@@ -251,8 +461,16 @@ enum AcademicApi {
         if !baselineGpa.isEmpty { form["baseline_gpa"] = baselineGpa }
         if !baselineCredits.isEmpty { form["baseline_credits"] = baselineCredits }
         if ruleId > 0 { form["rule_id"] = String(ruleId) }
+        if !futureCredits.isEmpty { form["future_credits"] = jsonString(futureCredits) }
         return await post("gpaPlanSave", form: form) { json in
             guard codeOK(json) else { throw AcademicError(msg(json, "保存失败")) }
+            return parseGpaPlanPreviewData(
+                json["data"] as? [String: Any],
+                targetSemester: targetSemester,
+                targetGpa: targetGpa,
+                ruleId: ruleId,
+                futureCredits: futureCredits
+            )
         }
     }
 
@@ -326,8 +544,10 @@ enum AcademicApi {
 
     static func loadRegisteredCoursesBySemester(
         currentSemester: String,
-        already: [String: [GpaCourseRow]]
+        already: [String: [GpaCourseRow]],
+        serverProvided: Bool = false
     ) async -> [String: [GpaCourseRow]] {
+        if serverProvided { return already }
         var out = already
         let scan = AcademicCalc.lookbackGpaSemesters(currentSemester.isEmpty ? "大1上" : currentSemester)
         for sem in scan {
@@ -390,9 +610,49 @@ enum AcademicApi {
     }
 
     static func uploadImage(_ image: UIImage) async -> String? {
+        await uploadImageMeta(image)?.url
+    }
+
+    static func uploadImageMeta(_ image: UIImage) async -> UploadedImageMeta? {
         let resized = resize(image, maxSide: 1600)
         guard let data = resized.jpegData(compressionQuality: 0.82) else { return nil }
-        return await ApiService.shared.uploadFile(imageData: data, fileName: "academic.jpg", mimeType: "image/jpeg")
+        return await ApiService.shared.uploadFileMeta(imageData: data, fileName: "academic.jpg", mimeType: "image/jpeg")
+    }
+
+    static func fetchReviewBoard(date: String = "") async -> Result<ReviewBoard, Error> {
+        let path = date.isEmpty ? "reviewBoard" : "reviewBoard?date=\(urlEncode(date))"
+        return await get(path) { json in
+            guard codeOK(json), let data = json["data"] as? [String: Any] else {
+                throw AcademicError(msg(json, "加载失败"))
+            }
+            return parseReviewBoard(data)
+        }
+    }
+
+    static func submitReviewCheckin(
+        date: String,
+        task: ReviewTask,
+        doneAmount: Int,
+        minutes: Int,
+        note: String,
+        photos: [String],
+        makeup: Bool
+    ) async -> Result<ReviewBoard, Error> {
+        let photosJson = (try? String(data: JSONSerialization.data(withJSONObject: photos), encoding: .utf8)) ?? "[]"
+        return await post("reviewCheckin", form: [
+            "date": date,
+            "task_key": task.taskKey,
+            "done_amount": String(doneAmount),
+            "minutes": String(minutes),
+            "note": note,
+            "photos": photosJson,
+            "makeup": makeup ? "1" : "0"
+        ]) { json in
+            guard codeOK(json), let data = json["data"] as? [String: Any] else {
+                throw AcademicError(msg(json, "打卡失败"))
+            }
+            return parseReviewBoard(data)
+        }
     }
 
     // MARK: - parse
@@ -428,7 +688,8 @@ enum AcademicApi {
                 finalScoreRatio: stringValue(c["finalScoreRatio"]),
                 remarks: stringValue(c["remarks"]),
                 teachingUnit: stringValue(c["teachingUnit"]),
-                classHours: stringValue(c["classHours"])
+                classHours: stringValue(c["classHours"]),
+                countsToGpa: stringValue(c["countsToGpa"]) == "否" ? "否" : "是"
             )
         }
     }
@@ -469,6 +730,7 @@ enum AcademicApi {
             cumDisplay = match.cumulativeGpaDisplay
             cumCredits = match.cumulativeCredits
         }
+        let coursesBySemesterProvided = data["coursesBySemester"] != nil
         var bySem: [String: [GpaCourseRow]] = [:]
         if let obj = data["coursesBySemester"] as? [String: Any] {
             for (key, value) in obj {
@@ -491,6 +753,7 @@ enum AcademicApi {
             baselineCredits: optionalNumberString(baseline?["credits"]),
             courses: courses,
             coursesBySemester: bySem,
+            coursesBySemesterProvided: coursesBySemesterProvided,
             termGpaDisplay: termDisplay,
             cumulativeGpaDisplay: cumDisplay,
             cumulativeCredits: cumCredits,
@@ -500,7 +763,11 @@ enum AcademicApi {
             needsProfileSetup: boolValue(data["needsProfileSetup"]),
             needsEnrollYear: boolValue(data["needsEnrollYear"]),
             needsRule: boolValue(data["needsRule"]),
-            baselineSet: boolValue(data["baselineSet"])
+            baselineSet: boolValue(data["baselineSet"]),
+            gpaSource: stringValue(data["gpaSource"]).isEmpty ? "system" : stringValue(data["gpaSource"]),
+            overrideGpa: optionalDouble(data["overrideGpa"]),
+            overrideCredits: optionalDouble(data["overrideCredits"]),
+            overrideSemester: stringValue(data["overrideSemester"])
         )
     }
 
@@ -521,13 +788,18 @@ enum AcademicApi {
                 credits: credits,
                 targetScore: stringValue($0["targetScore"]),
                 locked: boolValue($0["locked"]),
-                creditText: formatPlanCredits(credits)
+                creditText: formatPlanCredits(credits),
+                countsToGpa: stringValue($0["countsToGpa"]).isEmpty ? "是" : stringValue($0["countsToGpa"])
             )
         }
         let projected: Double? = {
             if plan["projectedGpa"] == nil || plan["projectedGpa"] is NSNull { return nil }
             return doubleValue(plan["projectedGpa"])
         }()
+        var future: [String: String] = [:]
+        if let raw = plan["futureCredits"] as? [String: Any] {
+            for (k, v) in raw { future[k] = "\(v)" }
+        }
         return GpaPlanData(
             targetSemester: stringValue(plan["targetSemester"]),
             targetGpa: doubleValue(plan["targetGpa"]),
@@ -538,7 +810,87 @@ enum AcademicApi {
             baselineCredits: baselineCredits,
             showBaseline: showBaseline,
             expectedBaselineSemester: expectedBaselineSemester,
-            ruleId: ruleId
+            ruleId: ruleId,
+            futureCredits: future
+        )
+    }
+
+    private static func parseGpaPlanPreviewData(
+        _ data: [String: Any]?,
+        targetSemester: String,
+        targetGpa: Double,
+        ruleId: Int = 0,
+        futureCredits: [String: String] = [:]
+    ) -> GpaPlanData {
+        let root = data ?? [:]
+        let pending = root["pendingCourses"] as? [[String: Any]] ?? []
+        let courses: [GpaPlanCourse] = pending.map { c in
+            let credits = doubleValue(c["credits"])
+            let score = stringValue(c["targetScore"])
+            let point = doubleValue(c["targetPoint"])
+            let displayScore: String = {
+                if !score.isEmpty { return score }
+                if point > 0 { return AcademicCalc.gpaPointToScoreRange(point) }
+                return ""
+            }()
+            return GpaPlanCourse(
+                semester: stringValue(c["semester"]),
+                subjectName: stringValue(c["subjectName"]),
+                credits: credits,
+                targetScore: displayScore,
+                locked: boolValue(c["locked"]),
+                creditText: formatPlanCredits(credits),
+                countsToGpa: stringValue(c["countsToGpa"]).isEmpty ? "是" : stringValue(c["countsToGpa"])
+            )
+        }
+        let bucketsRaw = root["futureBuckets"] as? [[String: Any]] ?? []
+        let futureBuckets = bucketsRaw.map {
+            GpaFutureBucket(
+                label: stringValue($0["semester"]),
+                credits: doubleValue($0["credits"]),
+                requiredAvgPoint: doubleValue($0["requiredAvgPoint"])
+            )
+        }
+        let requiredAvg: Double? = root["requiredAvgPoint"] == nil || root["requiredAvgPoint"] is NSNull
+            ? nil : doubleValue(root["requiredAvgPoint"])
+        let maxPossible: Double? = root["maxPossibleGpa"] == nil || root["maxPossibleGpa"] is NSNull
+            ? nil : doubleValue(root["maxPossibleGpa"])
+        let achievable = root["achievable"] == nil ? true : boolValue(root["achievable"])
+        let pendingCredits = courses.filter { !$0.locked }.reduce(0) { $0 + $1.resolvedCredits() }
+        let futureSum = futureBuckets.reduce(0) { $0 + $1.credits }
+        let hint: String = {
+            if !achievable, let maxPossible {
+                return String(format: "目标无法达成 · 待考全考满分累计最高 %.2f", maxPossible)
+            }
+            if let requiredAvg, achievable {
+                return String(format: "待考 %.0f 学分 → 平均需 %.2f（约%@）", futureSum + pendingCredits, requiredAvg, AcademicCalc.gpaPointToScoreRange(requiredAvg))
+            }
+            return ""
+        }()
+        let projected: Double? = {
+            if root["projectedGpa"] == nil || root["projectedGpa"] is NSNull { return nil }
+            return doubleValue(root["projectedGpa"])
+        }()
+        return GpaPlanData(
+            targetSemester: targetSemester,
+            targetGpa: targetGpa,
+            projectedGpa: projected,
+            achievable: achievable,
+            courses: courses,
+            baselineGpa: "",
+            baselineCredits: "",
+            showBaseline: false,
+            expectedBaselineSemester: "",
+            ruleId: ruleId,
+            maxPossibleGpa: maxPossible,
+            requiredAvgPoint: requiredAvg,
+            totalCredits: doubleValue(root["totalCredits"]),
+            fixedCredits: doubleValue(root["fixedCredits"]),
+            fixedQualityPoints: doubleValue(root["fixedQualityPoints"]),
+            futureCredits: futureCredits,
+            baselineHint: stringValue(root["baselineHint"]),
+            futureBuckets: futureBuckets,
+            hintMessage: hint
         )
     }
 
@@ -552,6 +904,83 @@ enum AcademicApi {
                 point: doubleValue($0["point"])
             )
         }
+    }
+
+    private static func parseReviewBoard(_ data: [String: Any]) -> ReviewBoard {
+        let summary = data["summary"] as? [String: Any] ?? [:]
+        let alertJson = data["alert"] as? [String: Any]
+        let groupsJson = data["groups"] as? [[String: Any]] ?? []
+        let countdownJson = data["countdown"] as? [[String: Any]] ?? []
+        let alert: ReviewAlert? = alertJson.map {
+            ReviewAlert(
+                taskKey: stringValue($0["taskKey"]),
+                title: stringValue($0["title"]),
+                subtitle: stringValue($0["subtitle"]),
+                overdueLabel: stringValue($0["overdueLabel"]),
+                target: intValue($0["target"]),
+                unit: stringValue($0["unit"])
+            )
+        }
+        let groups: [ReviewGroup] = groupsJson.map { group in
+            let tasksJson = group["tasks"] as? [[String: Any]] ?? []
+            return ReviewGroup(
+                subjectName: stringValue(group["subjectName"]),
+                color: stringValue(group["color"]).isEmpty ? "#14C8B4" : stringValue(group["color"]),
+                tasks: tasksJson.map { task in
+                    ReviewTask(
+                        taskKey: stringValue(task["taskKey"]),
+                        subjectName: stringValue(task["subjectName"]),
+                        title: stringValue(task["title"]),
+                        unit: stringValue(task["unit"]).isEmpty ? "题" : stringValue(task["unit"]),
+                        target: intValue(task["target"]),
+                        rolled: intValue(task["rolled"]),
+                        overdue: boolValue(task["overdue"]),
+                        overdueLabel: stringValue(task["overdueLabel"]),
+                        done: boolValue(task["done"]),
+                        doneAmount: intValue(task["doneAmount"]),
+                        minutes: intValue(task["minutes"]),
+                        finishedAt: stringValue(task["finishedAt"]),
+                        meta: stringValue(task["meta"]),
+                        hint: stringValue(task["hint"]),
+                        canCheckin: boolValue(task["canCheckin"])
+                    )
+                }
+            )
+        }
+        let countdown: [ReviewCountdown] = countdownJson.map {
+            ReviewCountdown(
+                subjectName: stringValue($0["subjectName"]),
+                percent: intValue($0["percent"]),
+                remaining: intValue($0["remaining"]),
+                unit: stringValue($0["unit"]).isEmpty ? "题" : stringValue($0["unit"]),
+                dailyAvg: intValue($0["dailyAvg"]),
+                estimateLabel: stringValue($0["estimateLabel"]),
+                planLabel: stringValue($0["planLabel"]),
+                status: stringValue($0["status"]).isEmpty ? "na" : stringValue($0["status"]),
+                statusText: stringValue($0["statusText"]),
+                detail: stringValue($0["detail"])
+            )
+        }
+        return ReviewBoard(
+            semester: stringValue(data["semester"]),
+            date: stringValue(data["date"]),
+            today: stringValue(data["today"]),
+            dateLabel: stringValue(data["dateLabel"]),
+            canCheckin: boolValue(data["canCheckin"]),
+            hasPlan: boolValue(data["hasPlan"]),
+            summary: ReviewSummary(
+                rate: intValue(summary["rate"]),
+                total: intValue(summary["total"]),
+                done: intValue(summary["done"]),
+                pending: intValue(summary["pending"]),
+                overdue: intValue(summary["overdue"]),
+                headline: stringValue(summary["headline"]),
+                subline: stringValue(summary["subline"])
+            ),
+            alert: alert,
+            groups: groups,
+            countdown: countdown
+        )
     }
 
     private static func formatPlanCredits(_ credits: Double) -> String {
@@ -671,6 +1100,14 @@ enum AcademicApi {
         return s == "null" ? "" : s
     }
 
+    private static func optionalDouble(_ value: Any?) -> Double? {
+        if value == nil || value is NSNull { return nil }
+        if let n = value as? NSNumber { return n.doubleValue }
+        let s = stringValue(value)
+        if s.isEmpty || s.lowercased() == "null" { return nil }
+        return Double(s)
+    }
+
     private static func msg(_ json: [String: Any], _ fallback: String) -> String {
         let m = stringValue(json["msg"])
         return m.isEmpty ? fallback : m
@@ -714,7 +1151,8 @@ private extension SubjectRegisterRow {
             "finalScoreRatio": finalScoreRatio,
             "remarks": remarks,
             "teachingUnit": teachingUnit,
-            "classHours": classHours
+            "classHours": classHours,
+            "countsToGpa": countsToGpa == "否" ? "否" : "是"
         ]
     }
 }
@@ -738,7 +1176,80 @@ private extension GpaPlanCourse {
             "subjectName": subjectName,
             "targetScore": targetScore,
             "locked": locked,
-            "credits": resolvedCredits()
+            "credits": resolvedCredits(),
+            "countsToGpa": countsToGpa
         ]
+    }
+}
+
+/// 本地删除墓碑（对齐 Android qaSubjectKey / loadRemovedQaSubjects）
+enum QaSubjectTombstone {
+    private static let prefPrefix = "jmm_qa_subject_tombstone."
+
+    static func qaSubjectKey(_ name: String) -> String {
+        var text = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return "" }
+        let marks = CharacterSet(charactersIn: "【】「」《》\"'`“”")
+        text = text.components(separatedBy: marks).joined()
+        text = text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let trailing = CharacterSet(charactersIn: "，。、；;,.:：！!？?~～·-—_")
+        while let last = text.unicodeScalars.last, trailing.contains(last) {
+            text.removeLast()
+        }
+        if text.count > 20 {
+            text = String(text.prefix(20))
+        }
+        return text
+    }
+
+    private static func storageKey() -> String? {
+        guard let token = ApiService.shared.token, !token.isEmpty else { return nil }
+        return prefPrefix + token
+    }
+
+    static func loadRemoved() -> [String] {
+        guard let key = storageKey() else { return [] }
+        let raw = UserDefaults.standard.stringArray(forKey: key) ?? []
+        return Array(Set(raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }))
+    }
+
+    private static func write(_ names: [String]) {
+        guard let key = storageKey() else { return }
+        UserDefaults.standard.set(names, forKey: key)
+    }
+
+    @discardableResult
+    static func remember(_ name: String) -> [String] {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty { return loadRemoved() }
+        let next = Array(Set(loadRemoved() + [clean]))
+        write(next)
+        return next
+    }
+
+    @discardableResult
+    static func forget(_ name: String) -> [String] {
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = qaSubjectKey(clean)
+        let next = loadRemoved().filter { item in
+            if item == clean { return false }
+            if !key.isEmpty && qaSubjectKey(item) == key { return false }
+            return true
+        }
+        write(next)
+        return next
+    }
+
+    static func filter(_ names: [String], removed: [String]? = nil) -> [String] {
+        let blockedRaw = Set((removed ?? loadRemoved()).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        if blockedRaw.isEmpty || names.isEmpty { return names }
+        let blockedKeys = Set(blockedRaw.map { qaSubjectKey($0) }.filter { !$0.isEmpty })
+        return names.filter { name in
+            let raw = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if blockedRaw.contains(raw) { return false }
+            let key = qaSubjectKey(raw)
+            return key.isEmpty || !blockedKeys.contains(key)
+        }
     }
 }

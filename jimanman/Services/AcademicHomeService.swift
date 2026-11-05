@@ -17,6 +17,7 @@ private struct HomeGpaCourseRow {
 private struct HomeGpaPlanCourse {
     let subjectName: String
     let targetScore: String
+    let semester: String
 }
 
 enum AcademicHomeService {
@@ -24,21 +25,28 @@ enum AcademicHomeService {
         "大1上", "大1下", "大2上", "大2下", "大3上", "大3下", "大4上", "大4下", "大5上", "大5下"
     ]
 
-    static func loadGradeGoals() async -> [HomeGradeGoalItem] {
+    static func loadGradeGoals(semesterHint: String = "") async -> [HomeGradeGoalItem] {
         async let summaryTask = fetchHomeSummaryGoals()
-        async let panelTask = fetchGpaPanel()
+        async let panelTask = fetchGpaPanel(semesterHint: semesterHint)
         let summary = await summaryTask
         let panel = await panelTask
-        let current = panel.semester
+        let current = blank(semesterHint, panel.semester)
         var bySem = panel.coursesBySemester
-        if bySem.values.allSatisfy({ $0.isEmpty }) {
+        if !panel.provided && bySem.values.allSatisfy({ $0.isEmpty }) {
             bySem = await loadRegisteredCourses(current: current.isEmpty ? "大1上" : current, already: bySem)
         }
         let plan = await fetchGpaPlan(targetSemester: current)
-        return mergeGoals(summaryGoals: summary, coursesBySemester: bySem, panelCourses: panel.courses, panelSemester: current, plan: plan)
+        return mergeGoals(
+            summaryGoals: summary,
+            coursesBySemester: bySem,
+            panelCourses: panel.courses,
+            panelSemester: panel.semester,
+            semesterHint: current,
+            plan: plan
+        )
     }
 
-    private static func fetchHomeSummaryGoals() async -> [(name: String, credit: String, goal: String, scored: Bool)] {
+    private static func fetchHomeSummaryGoals() async -> [(name: String, credit: String, goal: String, scored: Bool, semester: String)] {
         guard let json = await academicGet("homeSummary"), codeOK(json),
               let data = json["data"] as? [String: Any] else { return [] }
         let arr = data["gradeGoals"] as? [[String: Any]] ?? []
@@ -47,21 +55,26 @@ enum AcademicHomeService {
             guard !name.isEmpty else { return nil }
             let exam = stringValue(item["examScore"])
             let scored = boolValue(item["scored"]) || !exam.isEmpty
-            return (name, stringValue(item["credit"]), stringValue(item["goal"]), scored)
+            return (name, stringValue(item["credit"]), stringValue(item["goal"]), scored, stringValue(item["semester"]))
         }
     }
 
-    private static func fetchGpaPanel() async -> (
+    private static func fetchGpaPanel(semesterHint: String) async -> (
         semester: String,
         courses: [HomeGpaCourseRow],
-        coursesBySemester: [String: [HomeGpaCourseRow]]
+        coursesBySemester: [String: [HomeGpaCourseRow]],
+        provided: Bool
     ) {
-        guard let json = await academicGet("gpaPanel"), codeOK(json),
+        let path = semesterHint.trimmingCharacters(in: .whitespaces).isEmpty
+            ? "gpaPanel"
+            : "gpaPanel?semester=\(urlEncode(semesterHint))"
+        guard let json = await academicGet(path), codeOK(json),
               let data = json["data"] as? [String: Any] else {
-            return ("", [], [:])
+            return ("", [], [:], false)
         }
         let semester = stringValue(data["semester"])
         let courses = parseCourses(data["courses"] as? [[String: Any]] ?? [])
+        let provided = data["coursesBySemester"] != nil
         var bySem: [String: [HomeGpaCourseRow]] = [:]
         if let obj = data["coursesBySemester"] as? [String: Any] {
             for (key, value) in obj {
@@ -72,7 +85,7 @@ enum AcademicHomeService {
         if bySem.isEmpty && !courses.isEmpty {
             bySem[semester] = courses.filter { !$0.subjectName.isEmpty }
         }
-        return (semester, courses, bySem)
+        return (semester, courses, bySem, provided)
     }
 
     private static func fetchGpaPlan(targetSemester: String) async -> [HomeGpaPlanCourse] {
@@ -87,7 +100,11 @@ enum AcademicHomeService {
         return courses.compactMap { c in
             let name = stringValue(c["subjectName"]).trimmingCharacters(in: .whitespaces)
             guard !name.isEmpty else { return nil }
-            return HomeGpaPlanCourse(subjectName: name, targetScore: stringValue(c["targetScore"]))
+            return HomeGpaPlanCourse(
+                subjectName: name,
+                targetScore: stringValue(c["targetScore"]),
+                semester: stringValue(c["semester"])
+            )
         }
     }
 
@@ -106,88 +123,117 @@ enum AcademicHomeService {
     }
 
     private static func fetchSubjectRegisterCourses(semester: String) async -> [HomeGpaCourseRow] {
-        let path = semester.isEmpty
-            ? "subjectRegister"
-            : "subjectRegister?semester=\(urlEncode(semester))"
-        guard let json = await academicGet(path), codeOK(json),
-              let data = json["data"] as? [String: Any] else { return [] }
-        let courses = data["courses"] as? [[String: Any]] ?? []
-        return courses.compactMap { c in
-            let name = stringValue(c["subjectName"]).trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty else { return nil }
-            return HomeGpaCourseRow(subjectName: name, credits: stringValue(c["credits"]), examScore: "")
+        switch await AcademicApi.fetchSubjectRegister(semester: semester) {
+        case .success(let panel):
+            return panel.courses.compactMap { c in
+                let name = c.subjectName.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { return nil }
+                return HomeGpaCourseRow(subjectName: name, credits: c.credits, examScore: "")
+            }
+        case .failure:
+            return []
         }
     }
 
     private static func mergeGoals(
-        summaryGoals: [(name: String, credit: String, goal: String, scored: Bool)],
+        summaryGoals: [(name: String, credit: String, goal: String, scored: Bool, semester: String)],
         coursesBySemester: [String: [HomeGpaCourseRow]],
         panelCourses: [HomeGpaCourseRow],
         panelSemester: String,
+        semesterHint: String,
         plan: [HomeGpaPlanCourse]
     ) -> [HomeGradeGoalItem] {
+        let current = blank(semesterHint, panelSemester)
+        if current.isEmpty { return [] }
+
+        var currentRows: [String: HomeGpaCourseRow] = [:]
+        func absorb(_ row: HomeGpaCourseRow) {
+            let name = row.subjectName.trimmingCharacters(in: .whitespaces)
+            if name.isEmpty { return }
+            if let prev = currentRows[name] {
+                currentRows[name] = HomeGpaCourseRow(
+                    subjectName: name,
+                    credits: prev.credits.isEmpty ? row.credits : prev.credits,
+                    examScore: prev.examScore.isEmpty ? row.examScore : prev.examScore
+                )
+            } else {
+                currentRows[name] = HomeGpaCourseRow(subjectName: name, credits: row.credits, examScore: row.examScore)
+            }
+        }
+        (coursesBySemester[current] ?? []).forEach(absorb)
+        if panelSemester.isEmpty || panelSemester == current {
+            panelCourses.forEach(absorb)
+        }
+
         var examByName: [String: String] = [:]
         var creditByName: [String: String] = [:]
-        let rows = coursesBySemester.values.flatMap { $0 } + panelCourses
-        for row in rows where !row.subjectName.trimmingCharacters(in: .whitespaces).isEmpty {
-            let name = row.subjectName.trimmingCharacters(in: .whitespaces)
+        for row in currentRows.values {
             if !row.examScore.trimmingCharacters(in: .whitespaces).isEmpty {
-                examByName[name] = row.examScore.trimmingCharacters(in: .whitespaces)
+                examByName[row.subjectName] = row.examScore.trimmingCharacters(in: .whitespaces)
             }
             if !row.credits.trimmingCharacters(in: .whitespaces).isEmpty {
-                creditByName[name] = row.credits
+                creditByName[row.subjectName] = row.credits
             }
         }
         var pinByName: [String: String] = [:]
         for course in plan {
+            let courseSemester = course.semester.trimmingCharacters(in: .whitespaces)
+            if !courseSemester.isEmpty && courseSemester != current { continue }
             let score = course.targetScore.filter { $0.isNumber || $0 == "." }
             if !score.isEmpty { pinByName[course.subjectName] = score }
         }
 
-        func toItem(name: String, creditRaw: String, fallbackGoal: String) -> HomeGradeGoalItem {
-            let exam = examByName[name] ?? ""
-            let scored = !exam.isEmpty
+        func toItem(name: String, creditRaw: String, fallbackGoal: String, scoredHint: Bool = false) -> HomeGradeGoalItem {
+            let key = name.trimmingCharacters(in: .whitespaces)
+            let exam = examByName[key] ?? ""
+            let scored = !exam.isEmpty || (scoredHint && !fallbackGoal.isEmpty)
             let goal: String
-            if scored {
+            if !exam.isEmpty {
                 goal = exam
-            } else if let pin = pinByName[name], !pin.isEmpty {
+            } else if let pin = pinByName[key], !pin.isEmpty {
                 goal = pin
             } else {
                 goal = fallbackGoal.isEmpty ? "95" : fallbackGoal
             }
-            let credit = formatCredit(creditRaw.isEmpty ? (creditByName[name] ?? "") : creditRaw)
-            return HomeGradeGoalItem(
-                id: name,
-                name: name,
-                credit: credit,
-                goal: formatGoalScore(goal),
-                scored: scored
-            )
+            let credit = formatCredit(creditRaw.isEmpty ? (creditByName[key] ?? "") : creditRaw)
+            return HomeGradeGoalItem(id: key, name: key, credit: credit, goal: formatGoalScore(goal), scored: scored)
         }
 
-        if !summaryGoals.isEmpty {
-            return summaryGoals.map { toItem(name: $0.name, creditRaw: $0.credit, fallbackGoal: $0.goal) }
+        let tagged = summaryGoals.filter { !$0.semester.trimmingCharacters(in: .whitespaces).isEmpty && !$0.name.isEmpty }
+        if !tagged.isEmpty {
+            return tagged.filter { $0.semester.trimmingCharacters(in: .whitespaces) == current }
+                .map { toItem(name: $0.name, creditRaw: $0.credit, fallbackGoal: $0.goal, scoredHint: $0.scored) }
         }
-        let currentRows = panelCourses.filter { !$0.subjectName.trimmingCharacters(in: .whitespaces).isEmpty }
-        let fallbackRows = currentRows.isEmpty ? (coursesBySemester[panelSemester] ?? []) : currentRows
-        if !fallbackRows.isEmpty {
-            return fallbackRows.map {
-                let name = $0.subjectName.trimmingCharacters(in: .whitespaces)
-                return toItem(name: name, creditRaw: $0.credits, fallbackGoal: pinByName[name] ?? "")
+        if !currentRows.isEmpty {
+            var summaryByName: [String: (name: String, credit: String, goal: String, scored: Bool, semester: String)] = [:]
+            for item in summaryGoals where !item.name.isEmpty {
+                summaryByName[item.name.trimmingCharacters(in: .whitespaces)] = item
+            }
+            return currentRows.values.map { row in
+                let summary = summaryByName[row.subjectName]
+                return toItem(
+                    name: row.subjectName,
+                    creditRaw: (summary?.credit ?? "").isEmpty ? row.credits : (summary?.credit ?? ""),
+                    fallbackGoal: summary?.goal ?? "",
+                    scoredHint: summary?.scored == true
+                )
             }
         }
-        return semesterOrder.compactMap { coursesBySemester[$0] }.flatMap { $0 }
-            .filter { !$0.subjectName.trimmingCharacters(in: .whitespaces).isEmpty }
-            .reduce(into: [HomeGpaCourseRow]()) { acc, row in
-                let name = row.subjectName.trimmingCharacters(in: .whitespaces)
-                if !acc.contains(where: { $0.subjectName.trimmingCharacters(in: .whitespaces) == name }) {
-                    acc.append(row)
-                }
-            }
-            .map {
-                let name = $0.subjectName.trimmingCharacters(in: .whitespaces)
-                return toItem(name: name, creditRaw: $0.credits, fallbackGoal: pinByName[name] ?? "")
-            }
+        let pastNames = Set(
+            coursesBySemester
+                .filter { $0.key.trimmingCharacters(in: .whitespaces) != current }
+                .flatMap { $0.value }
+                .map { $0.subjectName.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        )
+        return summaryGoals
+            .filter { !$0.name.isEmpty && !pastNames.contains($0.name.trimmingCharacters(in: .whitespaces)) }
+            .map { toItem(name: $0.name, creditRaw: $0.credit, fallbackGoal: $0.goal, scoredHint: $0.scored) }
+    }
+
+    private static func blank(_ value: String, _ fallback: String) -> String {
+        let text = value.trimmingCharacters(in: .whitespaces)
+        return text.isEmpty ? fallback.trimmingCharacters(in: .whitespaces) : text
     }
 
     private static func parseCourses(_ arr: [[String: Any]]) -> [HomeGpaCourseRow] {

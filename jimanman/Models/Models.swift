@@ -11,6 +11,7 @@ struct UserProfile: Codable {
     var major: String
     var schoolYear: String
     var invitationCode: String
+    var isStudent: Bool
     
     enum CodingKeys: String, CodingKey {
         case id, nickname, avatarUrl, school, major
@@ -18,10 +19,12 @@ struct UserProfile: Codable {
         case vipTime = "vip_expire_time_text"
         case schoolYear = "schoolyear"
         case invitationCode = "invitation_code"
+        case isStudent = "is_student"
     }
     
     init(id: Int, nickname: String, avatarUrl: String, isVip: Bool, vipTime: String,
-         school: String, major: String, schoolYear: String = "", invitationCode: String = "") {
+         school: String, major: String, schoolYear: String = "", invitationCode: String = "",
+         isStudent: Bool = false) {
         self.id = id
         self.nickname = nickname
         self.avatarUrl = avatarUrl
@@ -31,6 +34,7 @@ struct UserProfile: Codable {
         self.major = major
         self.schoolYear = schoolYear
         self.invitationCode = invitationCode
+        self.isStudent = isStudent
     }
     
     init(from decoder: Decoder) throws {
@@ -48,6 +52,13 @@ struct UserProfile: Codable {
             schoolYear = try c.decodeIfPresent(String.self, forKey: .schoolYear) ?? ""
         }
         invitationCode = try c.decodeIfPresent(String.self, forKey: .invitationCode) ?? ""
+        if let flag = try? c.decode(Bool.self, forKey: .isStudent) {
+            isStudent = flag
+        } else if let n = try? c.decode(Int.self, forKey: .isStudent) {
+            isStudent = n == 1
+        } else {
+            isStudent = false
+        }
     }
 }
 
@@ -156,6 +167,42 @@ struct AskRecordItem: Identifiable {
     let answerText: String
     let imageUrl: String
     let timeText: String
+    var subjectName: String
+    let knowledgePoint: String
+    let conversationId: String
+    let sessionId: String
+    var mastered: Bool
+    var previewOnly: Bool
+
+    init(
+        id: String,
+        title: String,
+        questionText: String,
+        answerSummary: String,
+        answerText: String,
+        imageUrl: String,
+        timeText: String,
+        subjectName: String = "",
+        knowledgePoint: String = "",
+        conversationId: String = "",
+        sessionId: String = "",
+        mastered: Bool = false,
+        previewOnly: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.questionText = questionText
+        self.answerSummary = answerSummary
+        self.answerText = answerText
+        self.imageUrl = imageUrl
+        self.timeText = timeText
+        self.subjectName = subjectName
+        self.knowledgePoint = knowledgePoint
+        self.conversationId = conversationId
+        self.sessionId = sessionId
+        self.mastered = mastered
+        self.previewOnly = previewOnly
+    }
 }
 
 // MARK: - 会话记录
@@ -213,11 +260,15 @@ struct ChatMessage: Identifiable {
     var imageLocalURL: String?
     var imageName: String
     var imageSize: Int64
+    var qaMode: String
+    var favoriteId: Int
+    var wrongId: Int
     
     init(id: String = UUID().uuidString, role: String, content: String,
          isStreaming: Bool = false, relatedQuestion: String = "",
          relatedImageUrl: String = "", imageLocalURL: String? = nil,
-         imageName: String = "", imageSize: Int64 = 0) {
+         imageName: String = "", imageSize: Int64 = 0,
+         qaMode: String = "答案模式", favoriteId: Int = 0, wrongId: Int = 0) {
         self.id = id
         self.role = role
         self.content = content
@@ -227,6 +278,9 @@ struct ChatMessage: Identifiable {
         self.imageLocalURL = imageLocalURL
         self.imageName = imageName
         self.imageSize = imageSize
+        self.qaMode = qaMode
+        self.favoriteId = favoriteId
+        self.wrongId = wrongId
     }
 }
 

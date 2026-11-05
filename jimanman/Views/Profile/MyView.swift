@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - 个人中心
 struct MyView: View {
@@ -8,8 +9,9 @@ struct MyView: View {
     let onOpenVip: () -> Void
     let onOpenAccount: () -> Void
     let onOpenStudentInfo: () -> Void
+    var onOpenFeedback: () -> Void = {}
     
-    @StateObject private var apiService = ApiService.shared
+    @ObservedObject private var apiService = ApiService.shared
     @State private var userProfile: UserProfile?
     @State private var showNicknameDialog = false
     @State private var nicknameInput = ""
@@ -18,18 +20,16 @@ struct MyView: View {
     @State private var selectedImage: UIImage?
     @State private var imageUploading = false
     
-    private var menuItems: [(title: String, icon: String)] {
-        var items: [(title: String, icon: String)] = [
-            ("基本信息", "sligo"),
-            ("我的答疑", "myask"),
-            ("我的测评", "item_c3"),
-        ]
-        if AppFeatures.showMembership {
-            items.append(("会员中心", "item_c2"))
-        }
-        items.append(("账号管理", "item_c5"))
-        return items
-    }
+    private var loggedIn: Bool { !(apiService.token ?? "").isEmpty }
+    private let customerServiceURL = URL(string: "https://work.weixin.qq.com/kfid/kfcb8e8bcd4fd690dae")!
+    private let menuItems: [(title: String, icon: String)] = [
+        ("基本信息", "sligo"),
+        ("拾错藏珍", "myask"),
+        ("我的测评", "item_c3"),
+        ("联系客服", "item_c6"),
+        ("账号管理", "item_c5"),
+        ("问题反馈", "item_icon3"),
+    ]
     
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -45,6 +45,7 @@ struct MyView: View {
         }
         .background(Color.white)
         .onAppear { loadUserProfile() }
+        .onChange(of: apiService.token) { _ in loadUserProfile() }
         .sheet(isPresented: $showNicknameDialog) {
             nicknameEditSheet
         }
@@ -73,124 +74,117 @@ struct MyView: View {
     
     // MARK: - 用户头部
     private var userHeader: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                if apiService.token == nil {
+                if !loggedIn {
                     Text("未登录")
                         .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.white)
                         .onTapGesture { onNeedLogin() }
                 } else {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 8) {
                         Text((userProfile?.nickname ?? "").isEmpty ? "用户" : userProfile!.nickname)
                             .font(.system(size: 22, weight: .bold))
                             .foregroundColor(.white)
-                            .onTapGesture {
-                                nicknameInput = userProfile?.nickname ?? ""
-                                showNicknameDialog = true
-                            }
-                        Text("(ID:\(userProfile?.id ?? 0))")
-                            .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "E6FFFB"))
-                        
-                        Button(action: {
-                            nicknameInput = userProfile?.nickname ?? ""
-                            showNicknameDialog = true
-                        }) {
-                            Image(systemName: "pencil")
-                                .font(.system(size: 15))
-                                .foregroundColor(.white)
-                        }
+                            .onTapGesture { openNicknameEditor() }
+                        Text("✎")
+                            .font(.system(size: 15))
+                            .foregroundColor(.white)
+                            .onTapGesture { openNicknameEditor() }
                     }
-
-                    if AppFeatures.showMembership {
-                        let vipText = userProfile?.isVip == true ? "VIP\(userProfile?.vipTime ?? "")到期" : "VIP已过期"
-                        Text(vipText)
-                            .font(.system(size: 13))
-                            .foregroundColor(Color(hex: "E6FFFB"))
-                    }
+                    Text(userProfile?.isStudent == true ? "学员" : "非学员")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(hex: "E6FFFB"))
                 }
             }
-            
             Spacer()
-            
-            AsyncImage(url: URL(string: userProfile?.avatarUrl.replacingOccurrences(of: "/{2,}", with: "/", options: .regularExpression) ?? "")) { phase in
-                        if let image = phase.image {
-                            image.resizable().scaledToFill()
-                        } else {
-                            Circle().fill(Color.gray.opacity(0.3)).overlay(Text("头像").font(.caption))
-                        }
-                    }
+            ZStack(alignment: .bottom) {
+                avatarImage
                     .frame(width: 80, height: 80)
                     .clipShape(Circle())
-                    .onTapGesture {
-                        if apiService.token != nil {
-                            showImagePicker = true
-                        } else {
-                            onNeedLogin()
-                        }
-                    }
-                    .overlay(alignment: .bottom) {
-                        if apiService.token != nil {
-                            if imageUploading {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(Color.black.opacity(0.7))
-                                    .clipShape(Capsule())
-                                    .offset(y: 10)
-                            } else {
-                                Text("编辑")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(Color.black.opacity(0.7))
-                                    .clipShape(Capsule())
-                                    .offset(y: 10)
-                            }
-                        }
-                    }
+                if loggedIn {
+                    Text("编辑")
+                        .font(.system(size: 10))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.black.opacity(0.66))
+                        .clipShape(Capsule())
+                }
+                if imageUploading {
+                    Color.black.opacity(0.4)
+                        .clipShape(Circle())
+                    ProgressView().tint(.white)
+                }
+            }
+            .frame(width: 80, height: 80)
+            .onTapGesture {
+                if loggedIn {
+                    showImagePicker = true
+                } else {
+                    onNeedLogin()
+                }
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
-        .background(AppColors.primary)
+        .frame(height: 138)
+        .background(Color(hex: "4DCDC4"))
+    }
+
+    private var avatarImage: some View {
+        let raw = userProfile?.avatarUrl ?? ""
+        let url = URL(string: raw.replacingOccurrences(of: "/{2,}", with: "/", options: .regularExpression))
+        return Group {
+            if loggedIn, let url, !raw.isEmpty {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        Image("unlogin_headpic").resizable().scaledToFill()
+                    }
+                }
+            } else {
+                Image("unlogin_headpic").resizable().scaledToFill()
+            }
+        }
+    }
+
+    private func openNicknameEditor() {
+        nicknameInput = userProfile?.nickname ?? ""
+        showNicknameDialog = true
     }
     
     // MARK: - 菜单列表
     @ViewBuilder
     private var menuList: some View {
-        ForEach(Array(menuItems.enumerated()), id: \.offset) { index, item in
-            if index > 0 { Divider().padding(.leading, 16).background(Color(hex: "EEEEEE").opacity(0.5)) }
-
+        ForEach(Array(menuItems.enumerated()), id: \.offset) { _, item in
+            Color(hex: "EEEEEE").opacity(0.5).frame(height: 0.5)
             HStack(spacing: 12) {
                 Image(item.icon)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 22, height: 22)
-
+                    .frame(width: 24, height: 24)
                 Text(item.title)
                     .font(.system(size: 14))
-                    .foregroundColor(AppColors.textPrimary)
-
+                    .foregroundColor(Color(hex: "111111"))
                 Spacer()
-
                 Image("right9")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 12, height: 12)
+                    .frame(width: 18, height: 28)
             }
             .contentShape(Rectangle())
             .onTapGesture {
                 switch item.title {
                 case "基本信息": onOpenStudentInfo()
-                case "我的答疑":
-                    if apiService.token == nil { onNeedLogin() } else { onOpenMyAsk() }
+                case "拾错藏珍":
+                    if !loggedIn { onNeedLogin() } else { onOpenMyAsk() }
                 case "我的测评": onOpenAssessment()
-                case "会员中心":
-                    if apiService.token == nil { onNeedLogin() } else { onOpenVip() }
+                case "联系客服": UIApplication.shared.open(customerServiceURL)
                 case "账号管理": onOpenAccount()
+                case "问题反馈":
+                    if !loggedIn { onNeedLogin() } else { onOpenFeedback() }
                 default: break
                 }
             }
@@ -225,6 +219,10 @@ struct MyView: View {
     
     // MARK: - 方法
     private func loadUserProfile() {
+        guard loggedIn else {
+            userProfile = nil
+            return
+        }
         Task {
             let profile = await apiService.fetchUserProfile()
             await MainActor.run { self.userProfile = profile }

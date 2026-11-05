@@ -34,6 +34,7 @@ struct GradeBacktrackView: View {
     @State private var showAddSheet = false
     @State private var addName = ""
     @State private var addCredit = "4"
+    @State private var addCountsToGpa = true
     @State private var showSchedSheet = false
     @State private var showProfileSetup = false
     @State private var setupEnrollYear = ""
@@ -52,6 +53,9 @@ struct GradeBacktrackView: View {
     @State private var showHistorySheet = false
     @State private var histGpaDraft = ""
     @State private var histCreditDraft = ""
+    @State private var futureCreditsInput: [String: String] = [:]
+    @State private var planPreview: GpaPlanData?
+    @State private var previewToken = 0
 
     private var selectedRule: GpaRuleOption? { rules.first { $0.id == selectedRuleId } }
     private var simple: Bool { AcademicCalc.isSimpleGpaRule(selectedRule) }
@@ -80,11 +84,13 @@ struct GradeBacktrackView: View {
         )
         let formulaHistC = pastHist.src == "科目登记" ? 0.0 : pastHist.credits
         let formulaHistG = pastHist.src == "科目登记" ? 0.0 : pastHist.gpa
-        let termC = gpaCourses.reduce(0) { $0 + (Double($1.credits) ?? 0) }
+        let registered = AcademicCalc.gpaRowsForSemester(pastCourseMap, currentSemester)
+        let termRows = AcademicCalc.termPlanRows(registered: registered, planned: gpaCourses)
+        let termC = AcademicCalc.subjectRegisterCredits(termRows)
         var fixedC = 0.0
         var fixedP = 0.0
         var fixedN = 0
-        for row in gpaCourses {
+        for row in termRows {
             let exam = Double(row.examScore)
             let pin = Double(pinnedOf(row.subjectName))
             let score = exam ?? pin
@@ -160,6 +166,7 @@ struct GradeBacktrackView: View {
 
     var body: some View {
         ZStack {
+            AcademicPalette.page.ignoresSafeArea()
             pageContent
             if showProfileSetup && !loading { profileOverlay }
             pickerOverlay
@@ -174,11 +181,16 @@ struct GradeBacktrackView: View {
         }
         .task { await reload() }
         .onDisappear { persistPlan() }
+        .onChange(of: targetGpaInput) { _ in schedulePreview() }
+        .onChange(of: termTargetGpaInput) { _ in schedulePreview() }
+        .onChange(of: targetAnchorSemester) { _ in schedulePreview() }
+        .onChange(of: planMode) { _ in schedulePreview() }
+        .onChange(of: gpaCourses.count) { _ in schedulePreview() }
     }
 
     private var pageContent: some View {
         VStack(spacing: 0) {
-            ProfileSimpleTopBar(title: "成绩倒推", onBack: onBack)
+            ProfileSimpleTopBar(title: "成绩目标", onBack: onBack, barBackground: .clear)
             if loading {
                 Spacer()
                 ProgressView().tint(AcademicPalette.teal)
@@ -216,6 +228,7 @@ struct GradeBacktrackView: View {
                     AcademicPrimaryButton(title: "添加课程") {
                         addName = ""
                         addCredit = "4"
+                        addCountsToGpa = true
                         showAddSheet = true
                     }
                     AcademicSecondaryButton(title: "上传课表") {
@@ -282,6 +295,12 @@ struct GradeBacktrackView: View {
                     numValue = termTargetGpaInput
                     showNumSheet = true
                 }
+            }
+            if let hint = planPreview?.hintMessage, !hint.isEmpty {
+                Text(hint)
+                    .font(.system(size: 12))
+                    .foregroundColor(AcademicPalette.muted)
+                    .padding(.top, 4)
             }
         }
     }
@@ -543,6 +562,23 @@ struct GradeBacktrackView: View {
         AcademicSheet(title: "添加课程", onDismiss: { showAddSheet = false }) {
             AcademicLabeledField(label: "课程名称", text: $addName, placeholder: "科目全称")
             AcademicLabeledField(label: "学分", text: $addCredit, placeholder: "4", keyboard: .decimalPad)
+            Button { addCountsToGpa.toggle() } label: {
+                HStack {
+                    Image(systemName: addCountsToGpa ? "checkmark.square.fill" : "square")
+                        .foregroundColor(addCountsToGpa ? AcademicPalette.teal : AcademicPalette.dim)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("计入GPA")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AcademicPalette.ink)
+                        Text("不参与GPA的科目请取消勾选")
+                            .font(.system(size: 12))
+                            .foregroundColor(AcademicPalette.muted)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
             AcademicPrimaryButton(title: "添加") {
                 let name = addName.trimmingCharacters(in: .whitespaces)
                 guard !name.isEmpty else { return }
@@ -551,9 +587,15 @@ struct GradeBacktrackView: View {
                     return
                 }
                 if !gpaCourses.contains(where: { $0.subjectName == name }) {
-                    gpaCourses.append(GpaCourseRow(subjectName: name, credits: addCredit.trimmingCharacters(in: .whitespaces), examScore: ""))
+                    gpaCourses.append(GpaCourseRow(
+                        subjectName: name,
+                        credits: addCredit.trimmingCharacters(in: .whitespaces),
+                        examScore: "",
+                        countsToGpa: addCountsToGpa ? "是" : "否"
+                    ))
                     persistGpa()
                 }
+                addCountsToGpa = true
                 showAddSheet = false
             }
         }
@@ -733,10 +775,12 @@ struct GradeBacktrackView: View {
         let target = planMode == .cumulative ? Double(targetGpaInput) : Double(termTargetGpaInput)
         guard let target else { return }
         Task {
+            let registered = AcademicCalc.gpaRowsForSemester(pastCourseMap, currentSemester)
+            let termRows = AcademicCalc.termPlanRows(registered: registered, planned: gpaCourses)
             let result = await AcademicApi.saveGpaPlan(
                 targetSemester: targetAnchorSemester.isEmpty ? currentSemester : targetAnchorSemester,
                 targetGpa: target,
-                adjustments: gpaCourses.map { row in
+                adjustments: termRows.map { row in
                     let pin = pinnedOf(row.subjectName)
                     return GpaPlanCourse(
                         semester: currentSemester,
@@ -744,16 +788,59 @@ struct GradeBacktrackView: View {
                         credits: Double(row.credits) ?? 0,
                         targetScore: pin,
                         locked: !pin.isEmpty && row.examScore.isEmpty,
-                        creditText: row.credits
+                        creditText: row.credits,
+                        countsToGpa: row.countsToGpa
                     )
                 },
                 baselineGpa: baselineGpa,
                 baselineCredits: baselineCredits,
-                ruleId: selectedRuleId
+                ruleId: selectedRuleId,
+                futureCredits: futureCreditsInput
             )
-            if case .failure(let error) = result {
+            if case .success(let preview) = result {
+                planPreview = preview
+            } else if case .failure(let error) = result {
                 academicToast(error.localizedDescription)
             }
+        }
+    }
+
+    private func schedulePreview() {
+        previewToken += 1
+        let token = previewToken
+        Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard token == previewToken else { return }
+            await runPreview()
+        }
+    }
+
+    private func runPreview() async {
+        let target = planMode == .cumulative ? Double(targetGpaInput) : Double(termTargetGpaInput)
+        guard let target, target > 0 else { return }
+        let registered = AcademicCalc.gpaRowsForSemester(pastCourseMap, currentSemester)
+        let termRows = AcademicCalc.termPlanRows(registered: registered, planned: gpaCourses)
+        let result = await AcademicApi.previewGpaPlan(
+            targetSemester: targetAnchorSemester.isEmpty ? currentSemester : targetAnchorSemester,
+            targetGpa: target,
+            adjustments: termRows.map { row in
+                let pin = pinnedOf(row.subjectName)
+                return GpaPlanCourse(
+                    semester: currentSemester,
+                    subjectName: row.subjectName,
+                    credits: Double(row.credits) ?? 0,
+                    targetScore: pin,
+                    locked: !pin.isEmpty && row.examScore.isEmpty,
+                    creditText: row.credits,
+                    countsToGpa: row.countsToGpa
+                )
+            },
+            baselineGpa: baselineGpa,
+            baselineCredits: baselineCredits,
+            futureCredits: futureCreditsInput
+        )
+        if case .success(let preview) = result {
+            planPreview = preview
         }
     }
 
@@ -829,7 +916,9 @@ struct GradeBacktrackView: View {
         rules = await AcademicApi.fetchGpaRules()
         await AcademicApi.syncAcademicSession(session)
         if session.school.isEmpty || session.major.isEmpty || session.semester.isEmpty {
-            if case .success(let panel) = await AcademicApi.fetchSubjectRegister(semester: session.semester) {
+            if let cached = AcademicApi.peekSubjectRegister(semester: session.semester) {
+                session.applyFromRegister(cached)
+            } else if case .success(let panel) = await AcademicApi.fetchSubjectRegister(semester: session.semester) {
                 session.applyFromRegister(panel)
             }
         }
@@ -863,7 +952,8 @@ struct GradeBacktrackView: View {
             histTerms = panel.terms
             let bySem = await AcademicApi.loadRegisteredCoursesBySemester(
                 currentSemester: currentSemester.isEmpty ? panel.semester : currentSemester,
-                already: panel.coursesBySemester
+                already: panel.coursesBySemester,
+                serverProvided: panel.coursesBySemesterProvided
             )
             pastCourseMap = bySem
             let loaded = panel.courses.filter { !$0.subjectName.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -880,14 +970,13 @@ struct GradeBacktrackView: View {
                 let score = c.targetScore.filter { $0.isNumber || $0 == "." }
                 return score.isEmpty ? nil : (c.subjectName, score)
             }
+            if !plan.futureCredits.isEmpty { futureCreditsInput = plan.futureCredits }
         }
         if targetAnchorSemester.isEmpty { targetAnchorSemester = currentSemester }
-        if totalCreditsInput.isEmpty {
-            totalCreditsInput = String(AcademicCalc.estimateTotalCreditsBySystem(session.educationSystem))
-        }
         if setupEduSystem.isEmpty { setupEduSystem = session.educationSystem }
         if selectedRuleId == 0 { selectedRuleId = AcademicCalc.pickDefaultGpaRuleId(rules) }
         loading = false
+        await runPreview()
     }
 }
 

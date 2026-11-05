@@ -126,7 +126,7 @@ struct AssessmentHomeView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
-        .background(Color.white)
+        .background(Color.clear)
     }
 
     private var assessmentHeroCard: some View {
@@ -303,15 +303,21 @@ struct AssessmentQuestionView: View {
 
                 AssessmentThinProgressBar(value: Double(currentPage + 1) / Double(totalPages))
 
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 10) {
-                        ForEach(currentPageQuestions) { question in
-                            questionCard(question: question)
+                ScrollViewReader { proxy in
+                    ScrollView(showsIndicators: false) {
+                        Color.clear.frame(height: 1).id("pageTop")
+                        LazyVStack(spacing: 10) {
+                            ForEach(currentPageQuestions) { question in
+                                questionCard(question: question)
+                            }
                         }
+                        .padding(12)
                     }
-                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onChange(of: currentPage) { _ in
+                        proxy.scrollTo("pageTop", anchor: .top)
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                 questionBottomBar
             }
@@ -360,7 +366,7 @@ struct AssessmentQuestionView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
-        .background(Color.white)
+        .background(Color.clear)
     }
 
     private var questionBottomBar: some View {

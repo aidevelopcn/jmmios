@@ -15,28 +15,28 @@ struct ContentView: View {
     @State private var chatHistoryVisible = false
     @State private var qaRefreshTrigger = 0
     @State private var homeRoute: HomeRoute?
+    @State private var homeReloadTrigger = 0
     @StateObject private var academicSession = AcademicSession()
     
     // 协议弹窗
     @AppStorage("agreementAccepted") private var agreementAccepted = false
-    @State private var showOpenCourseError = false
     
     var body: some View {
         ZStack {
             mainContent
         }
         .environmentObject(academicSession)
+        .onAppear {
+            AcademicApi.prefetchSubjectRegister()
+            AcademicApi.prefetchMyCourses()
+            HomeSnapshotStore.prefetchBanners()
+        }
         .overlay {
             if !agreementAccepted {
                 AgreementGateView {
                     agreementAccepted = true
                 }
             }
-        }
-        .alert("提示", isPresented: $showOpenCourseError) {
-            Button("确定", role: .cancel) {}
-        } message: {
-            Text("无法打开课程页面，请稍后重试")
         }
     }
 
@@ -47,6 +47,7 @@ struct ContentView: View {
                 LoginScreen(onBack: { showLogin = false }, onLoginSuccess: {
                     showLogin = false
                     selectedTab = 2
+                    homeReloadTrigger += 1
                 })
             } else if showGpaCalculator {
                 GpaAcademicView(openHistory: gpaOpenHistory, onBack: {
@@ -114,26 +115,24 @@ struct ContentView: View {
                         switch selectedTab {
                         case 0:
                             HomeView(
-                                onOpenSubjectRegister: { homeRoute = .subjectRegister },
+                                onOpenSubjectRegister: { openHomeFeature { homeRoute = .subjectRegister } },
                                 onOpenGpa: {
-                                    gpaOpenHistory = false
-                                    gpaFromGradeTarget = false
-                                    showGpaCalculator = true
-                                },
-                                onOpenGradeTarget: { homeRoute = .gradeTarget },
-                                onOpenAssessment: { showAssessment = true },
-                                onOpenAiChat: { selectedTab = 1 },
-                                onOpenCourse: {
-                                    if AppFeatures.showExternalCourses {
-                                        if !MyCourseOpener.openInExternalBrowser() {
-                                            showOpenCourseError = true
-                                        }
-                                    } else {
-                                        homeRoute = .myCourse
+                                    openHomeFeature {
+                                        gpaOpenHistory = false
+                                        gpaFromGradeTarget = false
+                                        showGpaCalculator = true
                                     }
                                 },
-                                onOpenPoliticsQuiz: { homeRoute = .politicsQuiz },
-                                onOpenReviewPlan: { homeRoute = .reviewPlan }
+                                onOpenGradeTarget: { openHomeFeature { homeRoute = .gradeTarget } },
+                                onOpenAssessment: { openHomeFeature { showAssessment = true } },
+                                onOpenAiChat: { selectedTab = 1 },
+                                onOpenMyAsk: { openHomeFeature { profileRoute = .myAsk } },
+                                onOpenCourse: {
+                                    openHomeFeature { homeRoute = .myCourse }
+                                },
+                                onOpenPoliticsQuiz: { selectedTab = 1 },
+                                onOpenReviewPlan: { openHomeFeature { homeRoute = .reviewPlan } },
+                                reloadTrigger: homeReloadTrigger
                             )
                         case 1:
                             AiChatView(
@@ -148,17 +147,18 @@ struct ContentView: View {
                         default:
                             MyView(
                                 onNeedLogin: { showLogin = true },
-                                onOpenMyAsk: { selectedTab = 1 },
+                                onOpenMyAsk: { profileRoute = .myAsk },
                                 onOpenAssessment: { showAssessment = true },
                                 onOpenVip: { profileRoute = .vipCenter },
                                 onOpenAccount: { profileRoute = .account },
-                                onOpenStudentInfo: { profileRoute = .studentInfo }
+                                onOpenStudentInfo: { profileRoute = .studentInfo },
+                                onOpenFeedback: { profileRoute = .feedback }
                             )
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    if !(hideTabBarForCamera || (selectedTab == 1 && !chatHistoryVisible)) {
+                    if !(hideTabBarForCamera || selectedTab == 1) {
                         MainTabBar(selectedTab: $selectedTab)
                             .background(Color.white.ignoresSafeArea(edges: .bottom))
                     }
@@ -174,6 +174,7 @@ struct ContentView: View {
             SubjectRegisterView(onBack: {
                 homeRoute = nil
                 qaRefreshTrigger += 1
+                homeReloadTrigger += 1
             }, onOpenGpa: {
                 homeRoute = nil
                 gpaOpenHistory = false
@@ -181,7 +182,10 @@ struct ContentView: View {
                 showGpaCalculator = true
             })
         case .gradeTarget:
-            GradeBacktrackView(onBack: { homeRoute = nil }, onOpenHistory: {
+            GradeBacktrackView(onBack: {
+                homeRoute = nil
+                homeReloadTrigger += 1
+            }, onOpenHistory: {
                 homeRoute = nil
                 gpaOpenHistory = true
                 gpaFromGradeTarget = true
@@ -190,9 +194,12 @@ struct ContentView: View {
         case .politicsQuiz:
             HomeFeaturePlaceholderView(title: "思政刷题", onBack: { homeRoute = nil })
         case .reviewPlan:
-            HomeFeaturePlaceholderView(title: "复习计划", onBack: { homeRoute = nil })
+            ReviewCheckinView(onBack: {
+                homeRoute = nil
+                homeReloadTrigger += 1
+            })
         case .myCourse:
-            HomeFeaturePlaceholderView(title: "我的课程", onBack: { homeRoute = nil })
+            MyCourseView(onBack: { homeRoute = nil })
         }
     }
 
@@ -200,7 +207,14 @@ struct ContentView: View {
     private func profileDestination(_ route: ProfileRoute) -> some View {
         switch route {
         case .myAsk:
-            MyAskListView(onBack: { profileRoute = nil }, onNeedLogin: { showLogin = true })
+            MyAskListView(
+                onBack: { profileRoute = nil },
+                onNeedLogin: { showLogin = true },
+                onOpenTimetable: {
+                    profileRoute = nil
+                    homeRoute = .subjectRegister
+                }
+            )
         case .vipCenter:
             if AppFeatures.showMembership {
                 VipCenterView(onBack: { profileRoute = nil }, onOpenRecharge: {
@@ -240,7 +254,17 @@ struct ContentView: View {
             StudentInfoView(onBack: { profileRoute = nil }) { profileRoute = .studentCertification }
         case .studentCertification:
             StudentCertificationView(onBack: { profileRoute = .studentInfo })
+        case .feedback:
+            FeedbackView(onBack: { profileRoute = nil })
         }
+    }
+
+    private func openHomeFeature(_ action: () -> Void) {
+        if (ApiService.shared.token ?? "").isEmpty {
+            showLogin = true
+            return
+        }
+        action()
     }
 }
 
@@ -308,7 +332,7 @@ enum HomeRoute {
 enum ProfileRoute {
     case myAsk, vipCenter, recharge, myOrders
     case account, applyCloseAccount, confirmCloseAccount
-    case studentInfo, studentCertification
+    case studentInfo, studentCertification, feedback
 }
 
 // MARK: - 底部 Tab 栏（对齐 Android BottomTabBar：图标 24pt、文字 11pt）
@@ -338,7 +362,7 @@ private struct MainTabBar: View {
                     Button {
                         selectedTab = index
                     } label: {
-                        VStack(spacing: 0) {
+                        VStack(spacing: 4) {
                             Image(selected ? tab.selectedIcon : tab.icon)
                                 .resizable()
                                 .renderingMode(.original)
@@ -348,10 +372,10 @@ private struct MainTabBar: View {
                             Text(tab.title)
                                 .font(.system(size: 11))
                                 .foregroundColor(selected ? Color(hex: "00B4BE") : Color(hex: "999999"))
-                                .offset(y: -2)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
+                        .padding(.top, 6)
+                        .padding(.bottom, 8)
                     }
                     .buttonStyle(.plain)
                 }

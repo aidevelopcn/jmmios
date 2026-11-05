@@ -17,7 +17,7 @@ struct SubjectRegisterView: View {
     @State private var showSemesterSheet = false
     @State private var showCourseSheet = false
     @State private var showUploadSheet = false
-    @State private var showAttrPicker = false
+    @State private var draftCountsToGpa = true
     @State private var showImagePicker = false
     @State private var pickerSource: UIImagePickerController.SourceType = .photoLibrary
     @State private var pickedImage: UIImage?
@@ -27,10 +27,12 @@ struct SubjectRegisterView: View {
     @State private var draftAttr = "必修"
     @State private var pendingDelete = false
 
+    private var inferredSemester: String {
+        AcademicCalc.inferGpaSemesterCode(session.schoolyear).ifEmpty(session.semester)
+    }
+
     private var currentSemester: String {
-        AcademicCalc.inferGpaSemesterCode(session.schoolyear)
-            .ifEmpty(selectedSemester)
-            .ifEmpty("大1上")
+        inferredSemester.ifEmpty(selectedSemester)
     }
 
     private var viewingCurrent: Bool {
@@ -45,11 +47,8 @@ struct SubjectRegisterView: View {
         namedCourses.reduce(0) { $0 + (Double($1.credits) ?? 4) }
     }
 
-    private var attrSummary: String {
-        subjectAttrs.compactMap { attr in
-            let count = namedCourses.filter { normalizeSubjectAttr($0.subjectType) == attr }.count
-            return count > 0 ? "\(attr) \(count)" : nil
-        }.joined(separator: " · ")
+    private var gpaCount: Int {
+        namedCourses.filter(\.countsInGpa).count
     }
 
     var body: some View {
@@ -146,47 +145,42 @@ struct SubjectRegisterView: View {
             pickedImage = nil
             runOcr(image)
         }
-        .task { await reload(session.semester) }
+        .task { await reload(inferredSemester) }
         .onChange(of: session.schoolyear) { _ in
-            Task { await reload(AcademicCalc.inferGpaSemesterCode(session.schoolyear).ifEmpty(session.semester).ifEmpty("大1上")) }
+            Task { await reload(inferredSemester) }
         }
     }
 
     private var subjectHero: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(viewingCurrent ? "本学期科目" : "补录学期")
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.85))
-            Text("\(namedCourses.count) 门")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundColor(.white)
-            Text(creditLine)
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.9))
-            if viewingCurrent && !namedCourses.isEmpty {
-                Button(action: onOpenGpa) {
-                    Text("去算 GPA ›")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(AcademicPalette.teal)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.white)
-                        .clipShape(Capsule())
+        JmmHeroSurface {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Circle().fill(AcademicPalette.lemon).frame(width: 6, height: 6)
+                    Text(viewingCurrent ? "本学期科目" : "补录学期")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.95))
                 }
-                .buttonStyle(.plain)
-                .padding(.top, 4)
+                Text("\(namedCourses.count) 门")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundColor(.white)
+                Text(creditLine)
+                    .font(.system(size: 13.5))
+                    .foregroundColor(.white.opacity(0.92))
+                HStack {
+                    Text(viewingCurrent ? "" : "历史学期 · \(namedCourses.count) 门")
+                        .font(.system(size: 12.5))
+                        .foregroundColor(.white.opacity(0.92))
+                    Spacer()
+                    if viewingCurrent && !namedCourses.isEmpty {
+                        Button("GPA 计算 ›", action: onOpenGpa)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                }
+                .padding(.top, 10)
             }
+            .padding(18)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [Color(hex: "00A691"), Color(hex: "00DCC8"), Color(hex: "5AE4D8")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
     private var creditLine: String {
@@ -194,31 +188,38 @@ struct SubjectRegisterView: View {
         let shown = abs(totalCredits - totalCredits.rounded()) < 0.05
             ? String(Int(totalCredits.rounded()))
             : String(format: "%.1f", totalCredits)
-        return "共 \(shown) 学分" + (attrSummary.isEmpty ? "" : " · \(attrSummary)")
+        return "共 \(shown) 学分" + (gpaCount > 0 ? " · 计入GPA \(gpaCount)门" : "")
     }
 
     private func courseRow(_ course: SubjectRegisterRow) -> some View {
-        let attr = normalizeSubjectAttr(course.subjectType)
-        let style = subjectAttrStyle(attr)
-        return Button {
-            if let idx = courses.firstIndex(where: { $0.subjectName == course.subjectName && $0.id == course.id }) {
-                openEditCourse(idx)
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Circle().fill(style.dot).frame(width: 6, height: 6)
-                Text(course.subjectName)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(AcademicPalette.ink)
-                    .lineLimit(1)
-                let credit = formatCreditLabel(course.credits)
-                if !credit.isEmpty {
-                    Text(credit)
-                        .font(.system(size: 11))
-                        .foregroundColor(AcademicPalette.dim)
+        let inGpa = course.countsInGpa
+        let style = subjectGpaStyle(inGpa)
+        return HStack(spacing: 12) {
+            Button {
+                if let idx = courses.firstIndex(where: { $0.subjectName == course.subjectName && $0.id == course.id }) {
+                    openEditCourse(idx)
                 }
-                Spacer()
-                Text(attr)
+            } label: {
+                HStack(spacing: 12) {
+                    Circle().fill(style.dot).frame(width: 6, height: 6)
+                    Text(course.subjectName)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(AcademicPalette.ink)
+                        .lineLimit(1)
+                    let credit = formatCreditLabel(course.credits)
+                    if !credit.isEmpty {
+                        Text(credit)
+                            .font(.system(size: 11))
+                            .foregroundColor(AcademicPalette.dim)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .buttonStyle(.plain)
+            Button {
+                toggleCountsToGpa(course)
+            } label: {
+                Text(inGpa ? "计入GPA" : "不计入GPA")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(style.pillText)
                     .padding(.horizontal, 10)
@@ -226,11 +227,11 @@ struct SubjectRegisterView: View {
                     .background(style.pillBg)
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(style.pillBorder, lineWidth: 1))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                Text("›").foregroundColor(AcademicPalette.dim)
             }
-            .padding(.vertical, 10)
+            .buttonStyle(.plain)
+            Text("›").foregroundColor(AcademicPalette.dim)
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 10)
     }
 
     private var semesterSheet: some View {
@@ -262,31 +263,24 @@ struct SubjectRegisterView: View {
             onDismiss: { showCourseSheet = false }
         ) {
             AcademicLabeledField(label: "课程名称", text: $draftName, placeholder: "请填写科目全称")
-            AcademicLabeledField(label: "学分", text: $draftCredit, placeholder: "4", keyboard: .decimalPad)
-            Button { showAttrPicker.toggle() } label: {
+            AcademicLabeledField(label: "学分", text: $draftCredit, placeholder: "如 3.5", keyboard: .decimalPad)
+            Button { draftCountsToGpa.toggle() } label: {
                 HStack {
-                    Text("属性")
-                        .font(.system(size: 12))
-                        .foregroundColor(AcademicPalette.muted)
+                    Image(systemName: draftCountsToGpa ? "checkmark.square.fill" : "square")
+                        .foregroundColor(draftCountsToGpa ? AcademicPalette.teal : AcademicPalette.dim)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("计入GPA")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AcademicPalette.ink)
+                        Text("不参与GPA的科目请取消勾选")
+                            .font(.system(size: 12))
+                            .foregroundColor(AcademicPalette.muted)
+                    }
                     Spacer()
-                    Text(draftAttr)
-                        .font(.system(size: 14))
-                        .foregroundColor(AcademicPalette.ink)
-                    Text("▾").foregroundColor(AcademicPalette.dim)
                 }
                 .padding(.vertical, 8)
             }
             .buttonStyle(.plain)
-            if showAttrPicker {
-                VStack(spacing: 6) {
-                    ForEach(subjectAttrs, id: \.self) { attr in
-                        AcademicOptionRow(title: attr, selected: draftAttr == attr) {
-                            draftAttr = attr
-                            showAttrPicker = false
-                        }
-                    }
-                }
-            }
             AcademicPrimaryButton(title: "保存", action: saveDraftCourse)
             if editingIndex >= 0 {
                 Button {
@@ -307,16 +301,16 @@ struct SubjectRegisterView: View {
     }
 
     private var uploadSheet: some View {
-        AcademicSheet(title: "上传课表", onDismiss: { showUploadSheet = false }) {
-            Text("拍课表或从相册选图，识别后会自动补科目")
+        AcademicSheet(title: "上传课表", onDismiss: { if !recognizing { showUploadSheet = false } }) {
+            Text("识别仅补充缺失科目，新增科目默认参与GPA计算，可编辑。")
                 .font(.system(size: 13))
                 .foregroundColor(AcademicPalette.muted)
-            AcademicPrimaryButton(title: recognizing ? "识别中…" : "拍照", enabled: !recognizing) {
-                pickerSource = .camera
+            AcademicPrimaryButton(title: recognizing ? "识别中…" : "＋ 选择课表图片 · 可分多次传", enabled: !recognizing) {
+                pickerSource = .photoLibrary
                 showImagePicker = true
             }
-            AcademicSecondaryButton(title: "从相册选择", enabled: !recognizing) {
-                pickerSource = .photoLibrary
+            AcademicSecondaryButton(title: "拍照录入", enabled: !recognizing) {
+                pickerSource = .camera
                 showImagePicker = true
             }
         }
@@ -331,6 +325,7 @@ struct SubjectRegisterView: View {
         draftName = ""
         draftCredit = "4"
         draftAttr = "必修"
+        draftCountsToGpa = true
         pendingDelete = false
         showCourseSheet = true
     }
@@ -342,6 +337,7 @@ struct SubjectRegisterView: View {
         draftName = row.subjectName
         draftCredit = row.credits.isEmpty ? "4" : row.credits
         draftAttr = normalizeSubjectAttr(row.subjectType)
+        draftCountsToGpa = row.countsInGpa
         pendingDelete = false
         showCourseSheet = true
     }
@@ -358,8 +354,14 @@ struct SubjectRegisterView: View {
             next[editingIndex].subjectName = name
             next[editingIndex].credits = draftCredit.trimmingCharacters(in: .whitespaces)
             next[editingIndex].subjectType = draftAttr
+            next[editingIndex].countsToGpa = draftCountsToGpa ? "是" : "否"
         } else {
-            next.append(SubjectRegisterRow(subjectName: name, credits: draftCredit.trimmingCharacters(in: .whitespaces), subjectType: draftAttr))
+            next.append(SubjectRegisterRow(
+                subjectName: name,
+                credits: draftCredit.trimmingCharacters(in: .whitespaces),
+                subjectType: draftAttr,
+                countsToGpa: draftCountsToGpa ? "是" : "否"
+            ))
         }
         showCourseSheet = false
         persist(next)
@@ -374,9 +376,12 @@ struct SubjectRegisterView: View {
         persist(next)
     }
 
-    private func applyCourses(_ rows: [SubjectRegisterRow]) {
-        let (deduped, _) = dedupe(rows.map(withDefaultCredits))
+    private func applyCourses(_ rows: [SubjectRegisterRow], toastDupes: Bool = false) {
+        let (deduped, removed) = dedupe(rows.map(withDefaultCredits))
         courses = deduped
+        if toastDupes, removed > 0 {
+            academicToast("已自动合并 \(removed) 门同学期重复科目")
+        }
     }
 
     private func persist(_ rows: [SubjectRegisterRow]? = nil) {
@@ -389,7 +394,7 @@ struct SubjectRegisterView: View {
         Task {
             saving = true
             let result = await AcademicApi.saveSubjectRegister(
-                semester: selectedSemester.ifEmpty(currentSemester),
+                semester: selectedSemester.ifEmpty(inferredSemester),
                 school: school.trimmingCharacters(in: .whitespaces),
                 major: major.trimmingCharacters(in: .whitespaces),
                 schoolyear: Int(schoolyear) ?? session.schoolyear,
@@ -412,20 +417,42 @@ struct SubjectRegisterView: View {
         }
     }
 
+    private func applyPanel(_ data: SubjectRegisterPanel, fallbackSemester: String) {
+        selectedSemester = data.semester.ifEmpty(fallbackSemester).ifEmpty(inferredSemester)
+        school = data.school.ifEmpty(school)
+        major = data.major.ifEmpty(major)
+        schoolyear = data.schoolyear > 0 ? String(data.schoolyear) : schoolyear
+        formalLocked = data.locked && data.courses.contains { !$0.subjectName.isEmpty }
+        session.applyFromRegister(data)
+        applyCourses(data.courses)
+    }
+
+    private func toggleCountsToGpa(_ course: SubjectRegisterRow) {
+        if formalLocked {
+            academicToast(subjectLockedHint)
+            return
+        }
+        guard let idx = courses.firstIndex(where: { $0.subjectName == course.subjectName && $0.id == course.id }) else { return }
+        var next = courses
+        next[idx].countsToGpa = next[idx].countsInGpa ? "否" : "是"
+        persist(next)
+    }
+
     private func reload(_ semester: String) async {
-        loading = true
+        if let cached = AcademicApi.peekSubjectRegister(semester: semester) {
+            applyPanel(cached, fallbackSemester: semester)
+            loading = false
+        } else {
+            loading = true
+        }
         let result = await AcademicApi.fetchSubjectRegister(semester: semester)
         switch result {
         case .success(let data):
-            selectedSemester = data.semester.ifEmpty(semester).ifEmpty(currentSemester)
-            school = data.school
-            major = data.major
-            schoolyear = data.schoolyear > 0 ? String(data.schoolyear) : schoolyear
-            formalLocked = data.locked && data.courses.contains { !$0.subjectName.isEmpty }
-            session.applyFromRegister(data)
-            applyCourses(data.courses)
+            applyPanel(data, fallbackSemester: semester)
         case .failure(let error):
-            academicToast(error.localizedDescription)
+            if AcademicApi.peekSubjectRegister(semester: semester) == nil {
+                academicToast(error.localizedDescription)
+            }
         }
         loading = false
     }
@@ -434,22 +461,23 @@ struct SubjectRegisterView: View {
         let semester = selectedSemester.ifEmpty(currentSemester)
         Task {
             recognizing = true
-            guard let url = await AcademicApi.uploadImage(image) else {
+            guard let meta = await AcademicApi.uploadImageMeta(image) else {
                 academicToast("上传失败")
                 recognizing = false
                 return
             }
             let result = await AcademicApi.recognizeSubjectRegister(
-                imageUrl: url,
+                imageUrl: meta.url,
                 semester: semester,
-                courses: courses
+                courses: courses,
+                imageMeta: meta
             )
             switch result {
             case .success(let pair):
                 if !pair.0.isEmpty, selectedSemester.isEmpty {
                     selectedSemester = pair.0
                 }
-                applyCourses(pair.1)
+                applyCourses(pair.1, toastDupes: true)
                 persist()
                 showUploadSheet = false
                 academicToast("识别成功，已补充缺少的科目")
@@ -537,7 +565,25 @@ private func mergePreferFilled(_ a: SubjectRegisterRow, _ b: SubjectRegisterRow)
     out.remarks = pick(a.remarks, b.remarks)
     out.teachingUnit = pick(a.teachingUnit, b.teachingUnit)
     out.classHours = pick(a.classHours, b.classHours)
+    out.countsToGpa = pick(a.countsToGpa, b.countsToGpa)
     return out
+}
+
+private func subjectGpaStyle(_ countsToGpa: Bool) -> SubjectAttrStyle {
+    if countsToGpa {
+        return SubjectAttrStyle(
+            dot: AcademicPalette.teal,
+            pillBg: Color(hex: "E0FAF6"),
+            pillBorder: AcademicPalette.teal.opacity(0.35),
+            pillText: AcademicPalette.teal
+        )
+    }
+    return SubjectAttrStyle(
+        dot: Color(hex: "9CA3AF"),
+        pillBg: Color(hex: "F2F4F7"),
+        pillBorder: Color(hex: "DDE0E4"),
+        pillText: Color(hex: "6B7280")
+    )
 }
 
 private func formatCreditLabel(_ credits: String) -> String {

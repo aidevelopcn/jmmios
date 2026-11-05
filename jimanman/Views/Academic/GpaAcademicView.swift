@@ -33,6 +33,7 @@ struct GpaAcademicView: View {
     @State private var draftCourseName = ""
     @State private var draftCourseCredit = "4"
     @State private var draftCourseScore = ""
+    @State private var draftCountsToGpa = true
     @State private var showTermEntry = false
     @State private var entrySemester = ""
     @State private var entryQuickMode = true
@@ -174,6 +175,9 @@ struct GpaAcademicView: View {
     }
 
     private var yearChip: String {
+        if gpaViewScope == .cumulative, panel?.gpaSource == "override", panel?.overrideGpa != nil {
+            return "教务核对值"
+        }
         guard gpaViewScope == .year else { return "" }
         return currentSemester.hasSuffix("上") ? "进行中 · 已录 1/2 学期" : "进行中 · 已录 2/2 学期"
     }
@@ -211,7 +215,11 @@ struct GpaAcademicView: View {
         switch gpaViewScope {
         case .term: return AcademicCalc.formatGpaOrDash(liveTerm)
         case .year: return liveYear.map { AcademicCalc.formatGpaOrDash($0) } ?? "—"
-        case .cumulative: return liveCum.map { AcademicCalc.formatGpaOrDash($0) } ?? "—"
+        case .cumulative:
+            if panel?.gpaSource == "override", let value = panel?.overrideGpa {
+                return String(format: "%.2f", value)
+            }
+            return liveCum.map { AcademicCalc.formatGpaOrDash($0) } ?? "—"
         }
     }
 
@@ -338,6 +346,7 @@ struct GpaAcademicView: View {
                     draftCourseName = ""
                     draftCourseCredit = "4"
                     draftCourseScore = ""
+                    draftCountsToGpa = true
                     showCourseSheet = true
                 }
                 AcademicSecondaryButton(title: "上传成绩单") {
@@ -370,12 +379,14 @@ struct GpaAcademicView: View {
             score: course.examScore,
             pointText: AcademicCalc.scoreToGpaPoint(score, rule: selectedRule).map { String(format: "%.1f", $0) } ?? "—",
             pending: score == nil,
-            editable: editable
+            editable: editable,
+            excludedFromGpa: course.countsToGpa == "否"
         ) {
             editingCourseIndex = index
             draftCourseName = course.subjectName
             draftCourseCredit = course.credits.ifBlank("4")
             draftCourseScore = course.examScore
+            draftCountsToGpa = course.countsToGpa != "否"
             showCourseSheet = true
         }
     }
@@ -385,7 +396,8 @@ struct GpaAcademicView: View {
             VStack(alignment: .leading, spacing: 11) {
                 AcademicSegmentControl(
                     options: HistoryEntryMode.allCases.map(\.label),
-                    selectedIndex: historyEntryMode.rawValue
+                    selectedIndex: historyEntryMode.rawValue,
+                    largeCorner: false
                 ) { historyEntryMode = HistoryEntryMode(rawValue: $0) ?? .packed }
                 if historyEntryMode == .packed {
                     packedHistory
@@ -558,6 +570,23 @@ struct GpaAcademicView: View {
             AcademicLabeledField(label: "课程名称", text: $draftCourseName, placeholder: "如：高等数学")
             AcademicLabeledField(label: "学分", text: $draftCourseCredit, placeholder: "如：3.5", keyboard: .decimalPad)
             AcademicLabeledField(label: "分数（0~100）", text: $draftCourseScore, placeholder: "如：92", keyboard: .decimalPad)
+            Button { draftCountsToGpa.toggle() } label: {
+                HStack {
+                    Image(systemName: draftCountsToGpa ? "checkmark.square.fill" : "square")
+                        .foregroundColor(draftCountsToGpa ? AcademicPalette.teal : AcademicPalette.dim)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("计入GPA")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AcademicPalette.ink)
+                        Text("不参与GPA的科目请取消勾选")
+                            .font(.system(size: 12))
+                            .foregroundColor(AcademicPalette.muted)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
             AcademicHintBar {
                 Text(previewScore == nil
                      ? "输入分数后显示对应绩点与等级"
@@ -740,7 +769,12 @@ struct GpaAcademicView: View {
         guard let score = Double(draftCourseScore), score >= 0, score <= 100 else {
             academicToast("分数需在 0~100 之间"); return
         }
-        let row = GpaCourseRow(subjectName: name, credits: draftCourseCredit.trimmingCharacters(in: .whitespaces), examScore: draftCourseScore)
+        let row = GpaCourseRow(
+            subjectName: name,
+            credits: draftCourseCredit.trimmingCharacters(in: .whitespaces),
+            examScore: draftCourseScore,
+            countsToGpa: draftCountsToGpa ? "是" : "否"
+        )
         if let idx = editingCourseIndex, courses.indices.contains(idx) {
             courses[idx] = row
         } else {
@@ -769,7 +803,8 @@ struct GpaAcademicView: View {
                 } else if case .success(let data) = await AcademicApi.fetchGpaPanel(semester: semester) {
                     let bySem = await AcademicApi.loadRegisteredCoursesBySemester(
                         currentSemester: currentSemester.ifBlank(data.semester),
-                        already: data.coursesBySemester
+                        already: data.coursesBySemester,
+                        serverProvided: data.coursesBySemesterProvided
                     )
                     panel = data
                     panel?.coursesBySemester = bySem
@@ -897,7 +932,9 @@ struct GpaAcademicView: View {
         rules = await AcademicApi.fetchGpaRules()
         await AcademicApi.syncAcademicSession(session)
         if session.school.isEmpty || session.major.isEmpty || session.semester.isEmpty {
-            if case .success(let reg) = await AcademicApi.fetchSubjectRegister(semester: hint) {
+            if let cached = AcademicApi.peekSubjectRegister(semester: hint) {
+                session.applyFromRegister(cached)
+            } else if case .success(let reg) = await AcademicApi.fetchSubjectRegister(semester: hint) {
                 session.applyFromRegister(reg)
             }
         }
@@ -907,7 +944,8 @@ struct GpaAcademicView: View {
             let currentCode = inferredNow.ifBlank(data.semester)
             let bySem = await AcademicApi.loadRegisteredCoursesBySemester(
                 currentSemester: currentCode.ifBlank(data.semester),
-                already: data.coursesBySemester
+                already: data.coursesBySemester,
+                serverProvided: data.coursesBySemesterProvided
             )
             var next = data
             next.coursesBySemester = bySem

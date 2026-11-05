@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// 网络服务 - 所有API接口与Android端完全一致
 class ApiService: ObservableObject {
@@ -13,14 +14,28 @@ class ApiService: ObservableObject {
         config.waitsForConnectivity = false
         return URLSession(configuration: config)
     }()
+
     private let baseURL = ApiConfig.baseURL
     private let timeout: TimeInterval = 15
     private var wxLoginInFlightCodes = Set<String>()
     
-    /// 获取Token
+    /// 获取Token（写入后通知界面，对齐 Android saveToken）
     var token: String? {
         get { UserDefaults.standard.string(forKey: "jmm_token") }
-        set { UserDefaults.standard.set(newValue, forKey: "jmm_token") }
+        set {
+            if let newValue, !newValue.isEmpty {
+                UserDefaults.standard.set(newValue, forKey: "jmm_token")
+                AcademicApi.prefetchSubjectRegister()
+                AcademicApi.prefetchMyCourses()
+            } else {
+                UserDefaults.standard.removeObject(forKey: "jmm_token")
+                AcademicApi.clearSubjectRegisterCache()
+                MyCoursesCache.clear()
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.objectWillChange.send()
+            }
+        }
     }
     
     /// 通用请求方法
@@ -28,13 +43,14 @@ class ApiService: ObservableObject {
         url: String,
         method: String = "GET",
         headers: [String: String] = [:],
-        body: Data? = nil
+        body: Data? = nil,
+        timeoutInterval: TimeInterval? = nil
     ) async -> [String: Any]? {
         guard let url = URL(string: url) else { return nil }
         
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = timeout
+        request.timeoutInterval = timeoutInterval ?? timeout
         
         if let token = self.token, !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -90,12 +106,12 @@ class ApiService: ObservableObject {
     }
     
     // MARK: - 首页轮播图
-    /// GET /api/index/index
-    func fetchBannerUrls() async -> [String] {
+    /// GET /api/index/index。失败返回 nil，避免把已有轮播图清空。
+    func fetchBannerUrls() async -> [String]? {
         guard let json = await request(url: "\(baseURL)/api/index/index"),
-              let code = json["code"] as? Int, code == 200 else { return [] }
+              let code = json["code"] as? Int, code == 200 else { return nil }
         guard let data = json["data"] as? [String: Any],
-              let adList = data["ad_list1"] as? [[String: Any]] else { return [] }
+              let adList = data["ad_list1"] as? [[String: Any]] else { return nil }
         return adList.compactMap { item in
             (item["filepath"] as? String)?.replacingOccurrences(of: "/{2,}", with: "/", options: .regularExpression)
         }
@@ -303,10 +319,11 @@ class ApiService: ObservableObject {
     }
 
     /// POST /api/user/sendVerifyCode
-    func sendVerifyCode(phone: String, type: String) async -> (success: Bool, message: String) {
+    func sendVerifyCode(phone: String, type: String, countryCode: String = "86") async -> (success: Bool, message: String) {
         guard let json = await postForm(url: "\(baseURL)/api/user/sendVerifyCode", params: [
             "phone": phone,
-            "type": type
+            "type": type,
+            "country_code": countryCode
         ]), let statusCode = jsonIntValue(json["code"]) else {
             return (false, "网络错误，请稍后重试")
         }
@@ -317,8 +334,8 @@ class ApiService: ObservableObject {
     }
 
     /// POST /api/user/phoneLogin
-    func phoneLogin(phone: String, password: String = "", verifyCode: String = "") async -> LoginResult {
-        var params = ["phone": phone]
+    func phoneLogin(phone: String, password: String = "", verifyCode: String = "", countryCode: String = "86") async -> LoginResult {
+        var params = ["phone": phone, "country_code": countryCode]
         if !verifyCode.isEmpty {
             params["verify_code"] = verifyCode
         } else {
@@ -336,12 +353,27 @@ class ApiService: ObservableObject {
         ]))
     }
 
+    /// POST /api/user/forgetPassword
+    func forgetPassword(phone: String, verifyCode: String, password: String, countryCode: String = "86") async -> (success: Bool, message: String) {
+        guard let json = await postForm(url: "\(baseURL)/api/user/forgetPassword", params: [
+            "phone": phone,
+            "verify_code": verifyCode,
+            "password": password,
+            "country_code": countryCode
+        ]), let statusCode = jsonIntValue(json["code"]) else {
+            return (false, "网络错误，请稍后重试")
+        }
+        let message = json["msg"] as? String ?? (statusCode == 200 ? "密码已重置，请用新密码登录" : "重置失败")
+        return (statusCode == 200, message)
+    }
+
     private func parseLoginJSON(_ json: [String: Any]?) -> LoginResult {
         guard let json, let statusCode = jsonIntValue(json["code"]) else {
             return LoginResult(success: false, token: "", message: "网络错误，请稍后重试")
         }
         if statusCode == 200 {
             let token = (json["data"] as? [String: Any])?["token"] as? String ?? ""
+            if !token.isEmpty { self.token = token }
             return LoginResult(
                 success: !token.isEmpty,
                 token: token,
@@ -353,24 +385,101 @@ class ApiService: ObservableObject {
 
     // MARK: - 获取用户信息
     /// GET /api/user/getInfo
-    func fetchUserProfile() async -> UserProfile? {
+    func fetchUserInfoData() async -> [String: Any]? {
         guard let json = await request(url: "\(baseURL)/api/user/getInfo"),
               let code = json["code"] as? Int, code == 200 else { return nil }
-        guard let data = json["data"] as? [String: Any] else { return nil }
+        return json["data"] as? [String: Any]
+    }
+
+    func fetchUserProfile() async -> UserProfile? {
+        guard let data = await fetchUserInfoData() else { return nil }
+        let yearRaw = jsonStringValue(data["schoolyear"], default: "")
+        let year = (Int(yearRaw) ?? 0) >= 2023 ? yearRaw : ""
         return UserProfile(
             id: data["id"] as? Int ?? 0,
-            nickname: data["nickname"] as? String ?? "",
-            avatarUrl: data["avatarUrl"] as? String ?? "",
-            isVip: data["is_vip"] as? Bool ?? false,
-            vipTime: data["vip_expire_time_text"] as? String ?? "",
-            school: data["school"] as? String ?? "",
-            major: data["major"] as? String ?? "",
-            schoolYear: {
-                if let y = data["schoolyear"] as? Int { return String(y) }
-                return data["schoolyear"] as? String ?? ""
-            }(),
-            invitationCode: data["invitation_code"] as? String ?? ""
+            nickname: jsonStringValue(data["nickname"], default: ""),
+            avatarUrl: jsonStringValue(data["avatarUrl"], default: ""),
+            isVip: jsonBoolValue(data["is_vip"]),
+            vipTime: jsonStringValue(data["vip_expire_time_text"], default: ""),
+            school: jsonStringValue(data["school"], default: ""),
+            major: jsonStringValue(data["major"], default: ""),
+            schoolYear: year,
+            invitationCode: jsonStringValue(data["invitation_code"], default: ""),
+            isStudent: jsonBoolValue(data["is_student"])
         )
+    }
+
+    /// POST /api/feedback/submit
+    func submitFeedback(content: String, contact: String, images: [String]) async -> Bool {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        let platform = "iOS \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
+        let imagesJSON: String
+        if let data = try? JSONSerialization.data(withJSONObject: images),
+           let text = String(data: data, encoding: .utf8) {
+            imagesJSON = text
+        } else {
+            imagesJSON = "[]"
+        }
+        guard let json = await postForm(url: "\(baseURL)/api/feedback/submit", params: [
+            "content": content,
+            "contact": contact,
+            "images": imagesJSON,
+            "app_version": version,
+            "platform": platform
+        ]), let code = json["code"] as? Int else { return false }
+        return code == 0 || code == 200
+    }
+
+    /// POST /api/cozeStream/setConversationSubject
+    func setConversationSubject(sessionId: String, subject: String) async -> Bool {
+        guard let json = await postJSON(url: "\(baseURL)/api/cozeStream/setConversationSubject", dict: [
+            "session_id": sessionId,
+            "subject": subject
+        ]), let code = json["code"] as? Int else { return false }
+        return code == 0 || code == 200
+    }
+
+    func fetchAccountAuth() async -> (phone: String, parentPhone: String, passwordSet: Bool) {
+        guard let json = await request(url: "\(baseURL)/api/user/getInfo"),
+              let code = json["code"] as? Int, code == 200,
+              let data = json["data"] as? [String: Any] else {
+            return ("", "", true)
+        }
+        let phone = data["phone"] as? String ?? ""
+        let parent = data["parent_phone"] as? String ?? ""
+        let passwordSet: Bool
+        if let n = data["password_set"] as? Int {
+            passwordSet = n == 1
+        } else if let n = data["password_set"] as? NSNumber {
+            passwordSet = n.intValue == 1
+        } else {
+            passwordSet = true
+        }
+        return (phone, parent, passwordSet)
+    }
+
+    func bindPhone(phone: String, verifyCode: String = "") async -> (success: Bool, message: String, token: String) {
+        var params = ["phone": phone]
+        if !verifyCode.isEmpty { params["verify_code"] = verifyCode }
+        guard let json = await postForm(url: "\(baseURL)/api/user/bindPhone", params: params),
+              let statusCode = jsonIntValue(json["code"]) else {
+            return (false, "网络错误，请稍后重试", "")
+        }
+        let message = json["msg"] as? String ?? (statusCode == 200 ? "绑定成功" : "绑定失败")
+        let token = (json["data"] as? [String: Any])?["token"] as? String ?? ""
+        return (statusCode == 200, message, token)
+    }
+
+    func changePassword(oldPassword: String, verifyCode: String, newPassword: String) async -> (success: Bool, message: String) {
+        var params = ["new_password": newPassword]
+        if !verifyCode.isEmpty { params["verify_code"] = verifyCode }
+        if !oldPassword.isEmpty { params["old_password"] = oldPassword }
+        guard let json = await postForm(url: "\(baseURL)/api/user/changePassword", params: params),
+              let statusCode = jsonIntValue(json["code"]) else {
+            return (false, "网络错误，请稍后重试")
+        }
+        return (statusCode == 200, json["msg"] as? String ?? (statusCode == 200 ? "修改成功" : "修改失败"))
     }
 
     func fetchAcademicAssessmentLocked() async -> Bool {
@@ -383,6 +492,8 @@ class ApiService: ObservableObject {
             locked = flag
         } else if let flag = data["academic_assessment_locked"] as? Int {
             locked = flag == 1
+        } else if let flag = data["academic_assessment_locked"] as? String {
+            locked = flag == "1" || flag.lowercased() == "true" || flag == "已确认"
         } else {
             locked = (data["academic_assessment"] as? String) == "已确认"
         }
@@ -406,9 +517,19 @@ class ApiService: ObservableObject {
     // MARK: - 更新用户信息（form）
     /// POST /api/user/updateInfo (form)
     func updateUserInfo(params: [String: String]) async -> Bool {
-        guard let json = await postForm(url: "\(baseURL)/api/user/updateInfo", params: params),
-              let code = json["code"] as? Int else { return false }
-        return code == 0 || code == 200
+        await updateUserInfoDetailed(params: params).ok
+    }
+
+    func updateUserInfoDetailed(params: [String: String]) async -> (ok: Bool, message: String) {
+        guard let json = await postForm(url: "\(baseURL)/api/user/updateInfo", params: params) else {
+            return (false, "网络异常，请稍后重试")
+        }
+        let code = json["code"] as? Int ?? -1
+        let msg = jsonStringValue(json["msg"], default: "")
+        if code == 0 || code == 200 {
+            return (true, msg.isEmpty ? "保存成功" : msg)
+        }
+        return (false, msg.isEmpty ? "保存失败" : msg)
     }
 
     /// POST /api/user/saveAssessment 学习能力测评完成 → 教务学员档案
@@ -432,6 +553,10 @@ class ApiService: ObservableObject {
     // MARK: - 上传文件
     /// POST /api/index/upload
     func uploadFile(imageData: Data, fileName: String, mimeType: String) async -> String? {
+        await uploadFileMeta(imageData: imageData, fileName: fileName, mimeType: mimeType)?.url
+    }
+
+    func uploadFileMeta(imageData: Data, fileName: String, mimeType: String) async -> UploadedImageMeta? {
         let boundary = "----JMMBoundary\(Int(Date().timeIntervalSince1970 * 1000))"
         var body = Data()
         
@@ -443,9 +568,24 @@ class ApiService: ObservableObject {
         
         guard let json = await request(url: "\(baseURL)/api/index/upload", method: "POST",
                                        headers: ["Content-Type": "multipart/form-data; boundary=\(boundary)"],
-                                       body: body),
-              let code = json["code"] as? Int, code == 200 else { return nil }
-        return (json["data"] as? [String: Any])?["filepath"] as? String
+                                       body: body,
+                                       timeoutInterval: 120),
+              let code = json["code"] as? Int, code == 200,
+              let data = json["data"] as? [String: Any] else { return nil }
+        let url = data["filepath"] as? String ?? ""
+        guard !url.isEmpty else { return nil }
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "zh_CN")
+        fmt.dateFormat = "yyyy-MM-dd"
+        let now = fmt.string(from: Date())
+        let expires = fmt.string(from: Calendar.current.date(byAdding: .day, value: 90, to: Date()) ?? Date())
+        return UploadedImageMeta(
+            fileId: jsonIntValue(data["id"]) ?? 0,
+            url: url,
+            name: data["name"] as? String ?? fileName,
+            uploadedAt: now,
+            expiresAt: expires
+        )
     }
     
     // MARK: - VIP商品列表
@@ -511,51 +651,83 @@ class ApiService: ObservableObject {
     }
     
     // MARK: - 收藏/错题本列表
-    /// GET /api/favorite/list
+    /// GET /api/favorite/list?brief=1
     func fetchFavoriteRecords(type: String, page: Int = 1, limit: Int = 40) async -> [AskRecordItem] {
-        guard let json = await request(url: "\(baseURL)/api/favorite/list?page=\(page)&limit=\(limit)&type=\(type)&keyword="),
+        guard let json = await request(url: "\(baseURL)/api/favorite/list?page=\(page)&limit=\(limit)&type=\(type)&keyword=&brief=1"),
               let code = json["code"] as? Int, code == 200 else { return [] }
         guard let data = json["data"] as? [String: Any],
               let list = data["list"] as? [[String: Any]] ?? (json["data"] as? [[String: Any]]) else { return [] }
-        return list.compactMap { item in
-            let title = item["title"] as? String ?? ""
-            let createTime = item["create_time"] as? String ?? item["update_time"] as? String ?? ""
-            var image = normalizeOptionalImage(item["image"] as? String)
-            let contentPreview = item["content_preview"] as? String ?? ""
-            let itemsArray = item["items"] as? [[String: Any]] ?? []
-            
-            var question = ""
-            var _answer = ""
-            for sub in itemsArray {
-                let subContent = sub["content"] as? String ?? ""
-                let contentType = sub["content_type"] as? String ?? ""
-                let subImage = normalizeOptionalImage(sub["image"] as? String)
-                
-                if image.isEmpty && !subImage.isEmpty { image = subImage }
-                if image.isEmpty && (contentType == "image" || subContent.hasPrefix("http")) {
-                    image = normalizeOptionalImage(subContent)
-                }
-                if question.isEmpty && (contentType == "user" || contentType == "question") {
-                    question = subContent
-                }
-                if _answer.isEmpty && contentType == "assistant" {
-                    _answer = subContent
-                }
+        let briefResponse = list.first.map { $0["question_preview"] != nil || $0["answer_preview"] != nil } ?? false
+        return list.compactMap { parseFavoriteItem($0, brief: briefResponse) }
+    }
+
+    /// GET /api/favorite/detail?id=
+    func fetchFavoriteDetail(id: String) async -> AskRecordItem? {
+        guard let numeric = Int(id), numeric > 0 else { return nil }
+        guard let json = await request(url: "\(baseURL)/api/favorite/detail?id=\(numeric)"),
+              let code = json["code"] as? Int, code == 200,
+              let data = json["data"] as? [String: Any] else { return nil }
+        return parseFavoriteItem(data, brief: false)
+    }
+
+    private func parseFavoriteItem(_ item: [String: Any], brief: Bool) -> AskRecordItem? {
+        let title = item["title"] as? String ?? ""
+        let createTime = item["create_time"] as? String ?? item["update_time"] as? String ?? ""
+        var image = normalizeOptionalImage(item["image"] as? String)
+        let contentPreview = item["content_preview"] as? String ?? ""
+        let itemsArray = item["items"] as? [[String: Any]] ?? []
+        var question = brief ? ((item["question_preview"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        var answer = brief ? ((item["answer_preview"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        for sub in itemsArray {
+            let subContent = sub["content"] as? String ?? ""
+            let contentType = sub["content_type"] as? String ?? ""
+            let subImage = normalizeOptionalImage(sub["image"] as? String)
+            if image.isEmpty && !subImage.isEmpty { image = subImage }
+            if image.isEmpty && (contentType == "image" || subContent.hasPrefix("http")) {
+                image = normalizeOptionalImage(subContent)
             }
-            if question.isEmpty { question = title.isEmpty ? contentPreview : title }
-            return AskRecordItem(
-                id: {
-                    let raw = jsonStringValue(item["id"], default: "")
-                    return raw.isEmpty ? UUID().uuidString : raw
-                }(),
-                title: title,
-                questionText: question,
-                answerSummary: String(_answer.prefix(140)),
-                answerText: _answer,
-                imageUrl: image,
-                timeText: createTime
-            )
+            if question.isEmpty && (contentType == "user" || contentType == "question") {
+                question = subContent
+            }
+            if answer.isEmpty && contentType == "assistant" {
+                answer = subContent
+            }
         }
+        if question.isEmpty { question = title.isEmpty ? contentPreview : title }
+        let subject = {
+            let raw = (item["subject"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !raw.isEmpty { return raw }
+            if let match = title.range(of: #"【([^】]+)】"#, options: .regularExpression) {
+                let inner = title[match].dropFirst().dropLast()
+                return String(inner)
+            }
+            return ""
+        }()
+        func cleanId(_ raw: String) -> String {
+            var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.hasSuffix(".0") { value = String(value.dropLast(2)) }
+            if value.isEmpty || value == "0" || value.lowercased() == "null" { return "" }
+            return value
+        }
+        return AskRecordItem(
+            id: {
+                let raw = jsonStringValue(item["id"], default: "")
+                return raw.isEmpty ? UUID().uuidString : raw
+            }(),
+            title: title,
+            questionText: question,
+            answerSummary: String(answer.prefix(140)),
+            answerText: brief ? "" : answer,
+            imageUrl: image,
+            timeText: createTime,
+            subjectName: subject,
+            knowledgePoint: (item["knowledgePoint"] as? String ?? item["knowledge_point"] as? String ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            conversationId: cleanId(jsonStringValue(item["conversation_id"], default: "")),
+            sessionId: cleanId(item["session_id"] as? String ?? ""),
+            mastered: jsonIntValue(item["mastered"]) == 1 || jsonBoolValue(item["mastered"]),
+            previewOnly: brief
+        )
     }
     
     /// POST /api/favorite/add
@@ -570,6 +742,42 @@ class ApiService: ObservableObject {
         guard let json = await postJSON(url: "\(baseURL)/api/favorite/add", dict: dict),
               let code = json["code"] as? Int else { return false }
         return code == 0 || code == 200
+    }
+
+    /// POST /api/favorite/master 错题本标记已掌握 / 撤销
+    func setFavoriteMastered(id: Int, mastered: Bool) async -> (ok: Bool, message: String) {
+        guard id > 0 else { return (false, "记录 ID 无效") }
+        guard let json = await postJSON(url: "\(baseURL)/api/favorite/master", dict: [
+            "id": id,
+            "mastered": mastered ? 1 : 0
+        ]) else {
+            return (false, "网络异常，请检查网络后重试")
+        }
+        let code = json["code"] as? Int ?? -1
+        let msg = jsonStringValue(json["msg"], default: "")
+        if code == 0 || code == 200 {
+            return (true, msg)
+        }
+        return (false, msg.isEmpty ? "操作失败，请稍后重试" : msg)
+    }
+
+    /// POST /api/favorite/setSubject 错题/收藏归类
+    func setFavoriteSubject(id: Int, subject: String) async -> (ok: Bool, message: String, subject: String) {
+        guard id > 0 else { return (false, "记录 ID 无效", "") }
+        guard let json = await postJSON(url: "\(baseURL)/api/favorite/setSubject", dict: [
+            "id": id,
+            "subject": subject
+        ]) else {
+            return (false, "网络异常，请稍后重试", "")
+        }
+        let code = json["code"] as? Int ?? -1
+        let msg = jsonStringValue(json["msg"], default: "")
+        if code == 0 || code == 200 {
+            let data = json["data"] as? [String: Any]
+            let stored = jsonStringValue(data?["subject"], default: subject)
+            return (true, msg, stored)
+        }
+        return (false, msg.isEmpty ? "归类失败，请稍后重试" : msg, "")
     }
     
     // MARK: - 注销账号
@@ -610,8 +818,9 @@ class ApiService: ObservableObject {
         provider: String = "qwen",
         mode: String = "答案模式",
         history: [[String: String]] = [],
-        onSubject: @escaping (String) -> Void = { _ in },
-        onChunk: @escaping (String) -> Void
+        onSubject: @escaping @MainActor (String) -> Void = { _ in },
+        onNewSubject: @escaping @MainActor (String) -> Void = { _ in },
+        onChunk: @escaping @MainActor (String) -> Void
     ) async {
         guard let url = URL(string: "\(baseURL)/api/cozeStream/chat") else { return }
         var request = URLRequest(url: url)
@@ -620,6 +829,8 @@ class ApiService: ObservableObject {
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("keep-alive", forHTTPHeaderField: "Connection")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         request.timeoutInterval = 120
 
         var body: [String: Any] = [
@@ -634,59 +845,122 @@ class ApiService: ObservableObject {
         if !history.isEmpty { body["history"] = history }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-        do {
-            let (bytes, _) = try await session.bytes(for: request)
-            var pending = ""
-            var lastFlush = Date.distantPast
+        let client = SSEByteClient()
+        var pending = ""
+        var lastFlush = Date.distantPast
+        var receivedContentLength = 0
+        var lastEvent = ""
+        var statusCode = 0
 
-            func flushPending(force: Bool = false) {
-                guard !pending.isEmpty else { return }
-                let now = Date()
-                if !force && now.timeIntervalSince(lastFlush) < 0.1 { return }
-                let out = pending
-                pending = ""
-                lastFlush = now
-                onChunk(out)
-            }
-
-            for try await line in bytes.lines {
-                try Task.checkCancellation()
-                let value = line.trimmingCharacters(in: .whitespaces)
-                guard value.hasPrefix("data:") else { continue }
-                let jsonStr = String(value.dropFirst(5)).trimmingCharacters(in: .whitespaces)
-                if jsonStr.isEmpty || jsonStr == "[]" || jsonStr == "[DONE]" || jsonStr.hasPrefix("[") { continue }
-                guard let data = jsonStr.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-
-                let eventType = ((obj["event"] as? String) ?? (obj["type"] as? String) ?? "").lowercased()
-                let status = (obj["status"] as? String ?? "").lowercased()
-                if eventType.contains("thinking") || status.contains("thinking") { continue }
-
-                let subjectName = jsonStringValue(obj["subject"], default: "").isEmpty
-                    ? jsonStringValue((obj["content"] as? [String: Any])?["subject"], default: "")
-                    : jsonStringValue(obj["subject"], default: "")
-                let chunkPreview = extractStreamChunk(from: obj)
-                if chunkPreview.isEmpty && (eventType == "subject" || !subjectName.isEmpty) {
-                    let name = subjectName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !name.isEmpty {
-                        onSubject(name)
-                    }
-                    continue
-                }
-
-                let chunk = chunkPreview
-                if !chunk.isEmpty {
-                    let isFirst = pending.isEmpty
-                    pending += chunk
-                    flushPending(force: isFirst)
-                }
-            }
-            flushPending(force: true)
-        } catch is CancellationError {
-            return
-        } catch {
-            onChunk("\n\n请求失败，请稍后重试。")
+        func flushPending(force: Bool = false) async {
+            guard !pending.isEmpty else { return }
+            let now = Date()
+            if !force && now.timeIntervalSince(lastFlush) < 0.05 { return }
+            let out = pending
+            pending = ""
+            lastFlush = now
+            await MainActor.run { onChunk(out) }
         }
+
+        func handleLine(_ line: String) async {
+            let value = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.isEmpty {
+                lastEvent = ""
+                return
+            }
+            if value.hasPrefix("event:") {
+                lastEvent = String(value.dropFirst(6)).trimmingCharacters(in: .whitespaces).lowercased()
+                return
+            }
+            guard value.hasPrefix("data:") else { return }
+            let jsonStr = String(value.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+            if jsonStr.isEmpty || jsonStr == "[]" || jsonStr == "[DONE]" || jsonStr.hasPrefix("[") { return }
+            guard let data = jsonStr.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+
+            let eventType = ((obj["event"] as? String) ?? (obj["type"] as? String) ?? lastEvent).lowercased()
+            let status = (obj["status"] as? String ?? "").lowercased()
+            if eventType.contains("thinking") || status.contains("thinking") { return }
+
+            let subjectName = jsonStringValue(obj["subject"], default: "").isEmpty
+                ? jsonStringValue((obj["content"] as? [String: Any])?["subject"], default: "")
+                : jsonStringValue(obj["subject"], default: "")
+            let hasAnswerPayload = obj["content"] is [String: Any] || obj["answer"] != nil
+            let chunkPreview = extractStreamChunk(from: obj)
+            if chunkPreview.isEmpty && !hasAnswerPayload && (eventType == "subject" || !subjectName.isEmpty) {
+                let name = subjectName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !name.isEmpty {
+                    await MainActor.run {
+                        if streamFlagTrue(obj["is_new"]) {
+                            onNewSubject(name)
+                        } else {
+                            onSubject(name)
+                        }
+                    }
+                }
+                lastEvent = ""
+                return
+            }
+
+            if !chunkPreview.isEmpty {
+                if receivedContentLength > 0 && QaHelpers.isStreamErrorChunk(chunkPreview) {
+                    lastEvent = ""
+                    return
+                }
+                let isFirst = pending.isEmpty
+                pending += chunkPreview
+                receivedContentLength += chunkPreview.count
+                await flushPending(force: isFirst)
+            } else if eventType == "error" && receivedContentLength == 0 {
+                let err = jsonStringValue(obj["message"], default: "").isEmpty
+                    ? jsonStringValue(obj["msg"], default: "")
+                    : jsonStringValue(obj["message"], default: "")
+                if !err.isEmpty && !QaHelpers.isStreamErrorChunk(err) {
+                    pending += err
+                    receivedContentLength += err.count
+                    await flushPending(force: true)
+                }
+            }
+            lastEvent = ""
+        }
+
+        let outcome = await withTaskCancellationHandler {
+            await client.start(request) { line in
+                await handleLine(line)
+            }
+        } onCancel: {
+            client.cancel()
+        }
+
+        if Task.isCancelled { return }
+        await flushPending(force: true)
+        statusCode = outcome.status
+        if let error = outcome.error, (error as NSError).code == NSURLErrorCancelled {
+            return
+        }
+        if receivedContentLength == 0 {
+            let fallback: String
+            if outcome.error != nil {
+                fallback = "未收到回复，请确认网络正常或稍后重试"
+            } else if (200...299).contains(statusCode) {
+                fallback = "答疑服务已连接，但没有返回内容，请再试一次"
+            } else if statusCode > 0 {
+                fallback = "答疑服务异常(\(statusCode))，请稍后重试"
+            } else {
+                fallback = "未收到回复，请确认网络正常或稍后重试"
+            }
+            await MainActor.run { onChunk(fallback) }
+        }
+    }
+
+    private func streamFlagTrue(_ raw: Any?) -> Bool {
+        if let value = raw as? Bool { return value }
+        if let value = raw as? Int { return value != 0 }
+        if let value = raw as? String {
+            let n = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return n == "1" || n == "true" || n == "yes"
+        }
+        return false
     }
 
     private func extractStreamChunk(from data: [String: Any]) -> String {
@@ -711,7 +985,20 @@ class ApiService: ObservableObject {
     }
 
     private func sanitizeStreamChunk(_ raw: String) -> String {
-        let lower = raw.lowercased()
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return raw }
+        let lower = text.lowercased()
+        if ["thinking", "thinking...", "thinking…", "思考中", "思考中..."].contains(lower) { return "" }
+        if text.hasPrefix("{"), text.hasSuffix("}"),
+           let data = text.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let nested = jsonStringValue(obj["answer"], default: "").isEmpty
+                ? (jsonStringValue(obj["content"], default: "").isEmpty
+                   ? jsonStringValue(obj["text"], default: "")
+                   : jsonStringValue(obj["content"], default: ""))
+                : jsonStringValue(obj["answer"], default: "")
+            if !nested.isEmpty { return nested }
+        }
         if lower.contains("\"status\"") && lower.contains("thinking") { return "" }
         return raw
     }
@@ -783,6 +1070,7 @@ class ApiService: ObservableObject {
         for msg in msgArray {
             let senderType = jsonIntValue(msg["senderType"]) ?? 1
             let content = jsonStringValue(msg["content"], default: "")
+            let qaMode = jsonStringValue(msg["mode"], default: "答案模式")
             let role = senderType == 1 ? "user" : "assistant"
             if role == lastRole, content == lastContent, !content.isEmpty { continue }
             lastRole = role
@@ -800,7 +1088,10 @@ class ApiService: ObservableObject {
                     role: "assistant",
                     content: content,
                     relatedQuestion: pendingQuestion,
-                    relatedImageUrl: pendingImage
+                    relatedImageUrl: pendingImage,
+                    qaMode: qaMode.isEmpty ? "答案模式" : qaMode,
+                    favoriteId: favoriteId,
+                    wrongId: wrongId
                 ))
             }
         }
@@ -860,8 +1151,11 @@ class ApiService: ObservableObject {
             )
         }
         var config = parseQaChatConfig(data)
-        if config.providers.count <= 1, config.modes.count <= 1 {
+        if config.modes.count <= 1 || config.providers.count <= 1 {
             if let extra = await fetchQaChatConfig() { config = extra }
+        }
+        if config.modes.count <= 1 {
+            config.modes = QaChatConfig.defaultModes
         }
         let hintSubjects = parseQaListSubjects(data, key: "subjects")
         let unmatched = parseQaListSubjects(data, key: "unmatched")
@@ -983,10 +1277,12 @@ class ApiService: ObservableObject {
     }
 
     private func parseQaChoiceField(_ parent: [String: Any], key: String, fallbackKey: String, fallbackLabel: String) -> [QaChoice] {
-        var out: [String: QaChoice] = [:]
+        var out: [QaChoice] = []
+        var seen = Set<String>()
         func add(_ choice: QaChoice?) {
-            guard let choice, !choice.key.isEmpty, out[choice.key] == nil else { return }
-            out[choice.key] = choice
+            guard let choice, !choice.key.isEmpty, !seen.contains(choice.key) else { return }
+            seen.insert(choice.key)
+            out.append(choice)
         }
         if let arr = parent[key] as? [Any] {
             arr.forEach { add(parseQaChoiceItem($0)) }
@@ -995,7 +1291,11 @@ class ApiService: ObservableObject {
                 add(parseQaChoiceItem(value) ?? QaChoice(key: itemKey, label: jsonStringValue(value, default: itemKey)))
             }
         }
-        return out.isEmpty ? [QaChoice(key: fallbackKey, label: fallbackLabel)] : Array(out.values)
+        if out.isEmpty {
+            if key == "modes" { return QaChatConfig.defaultModes }
+            return [QaChoice(key: fallbackKey, label: fallbackLabel)]
+        }
+        return out
     }
 
     private func parseQaChoiceItem(_ raw: Any?) -> QaChoice? {
@@ -1071,5 +1371,87 @@ class ApiService: ObservableObject {
         guard let text = raw?.trimmingCharacters(in: .whitespacesAndNewlines) else { return "" }
         if text.isEmpty || text.lowercased() == "null" || text.lowercased() == "undefined" || text == "[]" { return "" }
         return text
+    }
+}
+
+/// 按到达字节立刻拆 SSE 行，避免 URLSession.bytes 等到整段缓冲才出第一句。
+private final class SSEByteClient: NSObject, URLSessionDataDelegate {
+    private var session: URLSession!
+    private var task: URLSessionDataTask?
+    private var buffer = Data()
+    private var statusCode = 0
+    private var finishedError: Error?
+    private var lineBox: AsyncStream<String>.Continuation?
+    private var finished = false
+
+    override init() {
+        super.init()
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 180
+        config.waitsForConnectivity = false
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        queue.name = "jmm.sse"
+        session = URLSession(configuration: config, delegate: self, delegateQueue: queue)
+    }
+
+    func start(_ request: URLRequest, onLine: @escaping (String) async -> Void) async -> (status: Int, error: Error?) {
+        let lines = AsyncStream<String> { continuation in
+            self.lineBox = continuation
+            let task = self.session.dataTask(with: request)
+            self.task = task
+            task.resume()
+        }
+        for await line in lines {
+            if Task.isCancelled {
+                cancel()
+                break
+            }
+            await onLine(line)
+        }
+        return (statusCode, finishedError)
+    }
+
+    func cancel() {
+        task?.cancel()
+        finish(URLError(.cancelled))
+    }
+
+    private func finish(_ error: Error?) {
+        guard !finished else { return }
+        finished = true
+        finishedError = error
+        lineBox?.finish()
+        lineBox = nil
+        session.finishTasksAndInvalidate()
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        buffer.append(data)
+        let newline = Data([0x0A])
+        while let range = buffer.range(of: newline) {
+            let piece = buffer.subdata(in: buffer.startIndex..<range.lowerBound)
+            buffer.removeSubrange(buffer.startIndex..<range.upperBound)
+            var line = String(data: piece, encoding: .utf8) ?? ""
+            if line.hasSuffix("\r") { line.removeLast() }
+            lineBox?.yield(line)
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if !buffer.isEmpty {
+            var line = String(data: buffer, encoding: .utf8) ?? ""
+            if line.hasSuffix("\r") { line.removeLast() }
+            if !line.isEmpty { lineBox?.yield(line) }
+            buffer.removeAll()
+        }
+        finish(error)
     }
 }

@@ -2,13 +2,69 @@ import SwiftUI
 import UIKit
 
 enum AcademicPalette {
-    static let ink = Color(hex: "0F172A")
-    static let dim = Color(hex: "9AA3AF")
-    static let muted = Color(hex: "64748B")
-    static let teal = Color(hex: "009688")
-    static let acc = Color(hex: "00A691")
+    static let ink = Color(hex: "1A1F26")
+    static let dim = Color(hex: "9CA3AF")
+    static let muted = Color(hex: "4B5563")
+    static let teal = Color(hex: "4ECDC4")
+    static let acc = Color(hex: "4ECDC4")
+    static let brandInk = Color(hex: "00695A")
+    static let ghostInk = Color(hex: "3FBFB5")
     static let page = Color(hex: "F5F7FA")
-    static let hintBg = Color(hex: "F0FDFA")
+    static let hintBg = Color(hex: "EEFAFA")
+    static let hero = Color(hex: "4DCDC4")
+    static let heroWarn = Color(hex: "E5B44E")
+    static let heroWarnInk = Color(hex: "3B2B0B")
+    static let lemon = Color(hex: "FFD60A")
+    static let hair = Color(hex: "EEF1F3")
+    static let line = Color(hex: "0F172A").opacity(0.07)
+}
+
+struct JmmHeroDecor: View {
+    var warn: Bool = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            Circle()
+                .stroke(Color.white.opacity(warn ? 0.18 : 0.38), lineWidth: 2)
+                .frame(width: 280, height: 280)
+                .position(x: w + 20, y: -90)
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(Color.white.opacity(warn ? 0.34 : 0.90), lineWidth: 2.5)
+                .frame(width: 17, height: 17)
+                .rotationEffect(.degrees(45))
+                .position(x: w - 28, y: 26)
+            Circle()
+                .fill(Color.white.opacity(warn ? 0.28 : 0.55))
+                .frame(width: 6, height: 6)
+                .position(x: w - 49, y: 52)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+struct JmmHeroSurface<Content: View>: View {
+    var warn: Bool = false
+    var radius: CGFloat = 22
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                ZStack {
+                    warn ? AcademicPalette.heroWarn : AcademicPalette.hero
+                    JmmHeroDecor(warn: warn)
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .shadow(
+                color: (warn ? AcademicPalette.heroWarn : AcademicPalette.hero).opacity(0.42),
+                radius: 18,
+                x: 0,
+                y: 10
+            )
+    }
 }
 
 struct AcademicSheet<Content: View>: View {
@@ -19,24 +75,60 @@ struct AcademicSheet<Content: View>: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Color.black.opacity(0.35).ignoresSafeArea().onTapGesture(perform: onDismiss)
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onDismiss)
             VStack(alignment: .leading, spacing: 12) {
+                Capsule()
+                    .fill(AcademicPalette.hair)
+                    .frame(width: 38, height: 4)
+                    .frame(maxWidth: .infinity)
                 HStack {
                     Text(title)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(AcademicPalette.ink)
                     Spacer()
                     Button(action) { onDismiss() }
-                        .font(.system(size: 14))
-                        .foregroundColor(AcademicPalette.muted)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(AcademicPalette.ghostInk)
                 }
                 content()
             }
-            .padding(16)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+            .modifier(KeyboardBottomPadding())
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
+    }
+}
+
+enum KeyboardOverlap {
+    static func from(_ note: Notification) -> CGFloat {
+        guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return 0 }
+        let screen = UIScreen.main.bounds
+        return max(0, screen.maxY - frame.minY)
+    }
+}
+
+struct KeyboardBottomPadding: ViewModifier {
+    @State private var inset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.bottom, inset)
+            .animation(.easeOut(duration: 0.22), value: inset)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                inset = KeyboardOverlap.from(note)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                inset = 0
+            }
     }
 }
 
@@ -52,13 +144,7 @@ struct AcademicPrimaryButton: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(
-                    LinearGradient(
-                        colors: [Color(hex: "00E2D0"), Color(hex: "00B89F")],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .background(AcademicPalette.hero)
                 .clipShape(Capsule())
                 .opacity(enabled ? 1 : 0.5)
         }
@@ -167,69 +253,85 @@ struct AcademicHeroCard: View {
     var warn: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.85))
-            HStack(alignment: .lastTextBaseline, spacing: 6) {
-                Text(gpaValue)
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundColor(.white)
-                Text(unit)
-                    .font(.system(size: 14))
-                    .foregroundColor(.white.opacity(0.85))
+        JmmHeroSurface(warn: warn) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(warn ? AcademicPalette.brandInk : AcademicPalette.lemon)
+                        .frame(width: 6, height: 6)
+                        .shadow(color: AcademicPalette.lemon.opacity(warn ? 0 : 0.45), radius: 3)
+                    Text(title)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(warn ? AcademicPalette.heroWarnInk : .white)
+                }
+                HStack(alignment: .lastTextBaseline, spacing: 6) {
+                    Text(gpaValue)
+                        .font(.system(size: 40, weight: .bold))
+                        .foregroundColor(warn ? AcademicPalette.heroWarnInk : .white)
+                    Text(unit)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(warn ? AcademicPalette.heroWarnInk.opacity(0.8) : .white.opacity(0.95))
+                }
+                Text(band)
+                    .font(.system(size: 13.5))
+                    .foregroundColor(warn ? AcademicPalette.heroWarnInk.opacity(0.88) : .white.opacity(0.92))
+                HStack {
+                    Text(footLeft)
+                    Spacer()
+                    Text(footRight)
+                }
+                .font(.system(size: 12.5))
+                .foregroundColor(warn ? AcademicPalette.heroWarnInk.opacity(0.88) : .white.opacity(0.92))
+                .padding(.top, 8)
+                .overlay(alignment: .topLeading) {
+                    Color.white.opacity(warn ? 0.16 : 0.22).frame(height: 1)
+                }
             }
-            Text(band)
-                .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.9))
-            HStack {
-                Text(footLeft)
-                Spacer()
-                Text(footRight)
-            }
-            .font(.system(size: 12))
-            .foregroundColor(.white.opacity(0.8))
-            .padding(.top, 4)
+            .padding(18)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: warn
-                    ? [Color(hex: "F97316"), Color(hex: "EF4444")]
-                    : [Color(hex: "00A691"), Color(hex: "00DCC8"), Color(hex: "5AE4D8")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }
 
 struct AcademicSegmentControl: View {
     let options: [String]
     let selectedIndex: Int
+    var largeCorner: Bool = true
+    var segmentHeight: CGFloat = 36
     let onSelect: (Int) -> Void
 
+    private var trackShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: largeCorner ? segmentHeight : 12, style: .continuous)
+    }
+
+    private var itemShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: largeCorner ? segmentHeight : 10, style: .continuous)
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 4) {
             ForEach(options.indices, id: \.self) { index in
                 Button {
                     onSelect(index)
                 } label: {
                     Text(options[index])
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(index == selectedIndex ? .white : AcademicPalette.muted)
+                        .font(.system(size: 14, weight: index == selectedIndex ? .semibold : .regular))
+                        .foregroundColor(index == selectedIndex ? AcademicPalette.brandInk : AcademicPalette.muted)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(index == selectedIndex ? AcademicPalette.teal : Color.clear)
+                        .frame(height: segmentHeight)
+                        .background(index == selectedIndex ? Color.white : Color.clear)
+                        .clipShape(itemShape)
+                        .shadow(
+                            color: index == selectedIndex ? Color.black.opacity(0.06) : .clear,
+                            radius: index == selectedIndex ? 6 : 0,
+                            y: 1
+                        )
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(3)
-        .background(Color(hex: "EEF2F6"))
-        .clipShape(Capsule())
+        .padding(4)
+        .background(Color(hex: "EDEFF2"))
+        .clipShape(trackShape)
     }
 }
 
@@ -243,8 +345,8 @@ struct AcademicCompactToolbar: View {
     var body: some View {
         HStack(spacing: 8) {
             toolbarChip(semesterLabel, enabled: semesterEnabled, action: onSemesterClick)
-            toolbarChip(ruleLabel, enabled: true, action: onRuleClick)
-            Spacer()
+            Spacer(minLength: 8)
+            toolbarChip(ruleLabel.isEmpty ? "标准 4.0" : ruleLabel, enabled: true, action: onRuleClick)
         }
     }
 
@@ -328,42 +430,39 @@ struct GpaCalcHeroCard: View {
     var chip: String = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                Circle().fill(Color.white).frame(width: 6, height: 6)
-                Text(title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white.opacity(0.92))
-            }
-            Text(gpaValue.isEmpty ? "—" : gpaValue)
-                .font(.system(size: 42, weight: .bold))
-                .foregroundColor(.white)
-            if !chip.isEmpty {
-                Text(chip)
-                    .font(.system(size: 12, weight: .medium))
+        JmmHeroSurface {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(AcademicPalette.lemon)
+                        .frame(width: 6, height: 6)
+                        .shadow(color: AcademicPalette.lemon.opacity(0.45), radius: 3)
+                    Text(title)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.95))
+                }
+                Text(gpaValue.isEmpty ? "—" : gpaValue)
+                    .font(.system(size: 42, weight: .bold))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.22))
-                    .clipShape(Capsule())
+                if !chip.isEmpty {
+                    Text(chip)
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundColor(AcademicPalette.ghostInk)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 5)
+                        .background(AcademicPalette.hintBg)
+                        .overlay(Capsule().stroke(Color(hex: "06746C").opacity(0.40), lineWidth: 1))
+                        .clipShape(Capsule())
+                }
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 13.5))
+                        .foregroundColor(.white.opacity(0.92))
+                }
             }
-            if !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.92))
-            }
+            .padding(.horizontal, 17)
+            .padding(.vertical, 16)
         }
-        .padding(.horizontal, 17)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [Color(hex: "00A691"), Color(hex: "00DCC8"), Color(hex: "7AE8E4")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }
 
@@ -374,6 +473,7 @@ struct GpaCourseListRow: View {
     let pointText: String
     let pending: Bool
     let editable: Bool
+    var excludedFromGpa: Bool = false
     let action: () -> Void
 
     var body: some View {
@@ -385,15 +485,15 @@ struct GpaCourseListRow: View {
                         .foregroundColor(AcademicPalette.ink)
                         .lineLimit(1)
                     Text(pending
-                         ? "\(credits.isEmpty ? "—" : credits) 学分 · 待录入分数"
-                         : "\(credits.isEmpty ? "—" : credits) 学分 · \(score) 分 · \(AcademicCalc.gradeNameOfScore(Double(score)))")
+                         ? "\(credits.isEmpty ? "—" : credits) 学分 · 待录入分数" + (excludedFromGpa ? " · 不计入GPA" : "")
+                         : "\(credits.isEmpty ? "—" : credits) 学分 · \(score) 分 · \(AcademicCalc.gradeNameOfScore(Double(score)))" + (excludedFromGpa ? " · 不计入GPA" : ""))
                         .font(.system(size: 12))
                         .foregroundColor(AcademicPalette.muted)
                 }
                 Spacer()
                 Text(pending ? "—" : pointText)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(pending ? AcademicPalette.dim : AcademicPalette.acc)
+                    .foregroundColor(pending ? AcademicPalette.dim : AcademicPalette.brandInk)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 4)
                     .background(pending ? Color(hex: "EEF2F6") : AcademicPalette.hintBg)

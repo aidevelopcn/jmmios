@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - 首页（对齐 Android HomeScreen）
 struct HomeView: View {
@@ -7,31 +8,32 @@ struct HomeView: View {
     let onOpenGradeTarget: () -> Void
     let onOpenAssessment: () -> Void
     let onOpenAiChat: () -> Void
+    let onOpenMyAsk: () -> Void
     let onOpenCourse: () -> Void
     let onOpenPoliticsQuiz: () -> Void
     let onOpenReviewPlan: () -> Void
+    var reloadTrigger: Int = 0
 
-    @State private var bannerURLs: [String] = []
+    @EnvironmentObject private var session: AcademicSession
+    @State private var bannerURLs: [String] = HomeSnapshotStore.banners
+    @State private var bannerAspects: [CGFloat] = HomeSnapshotStore.bannerAspects
     @State private var currentBannerIndex = 0
-    @State private var gradeGoals: [HomeGradeGoalItem] = []
+    @State private var gradeGoals: [HomeGradeGoalItem] = HomeSnapshotStore.gradeGoals
+    @State private var showAllGoals = false
+    @State private var reviewBoard: ReviewBoard? = HomeSnapshotStore.reviewBoard
     private let timer = Timer.publish(every: 3.5, on: .main, in: .common).autoconnect()
 
     private var featureItems: [(title: String, icon: String)] {
-        let core: [(String, String)] = [
+        [
             ("科目登记", "icon_01"),
             ("GPA计算", "icon_06"),
-            ("成绩倒推", "icon_02"),
-            ("快速答疑", "icon_05"),
+            ("成绩目标", "icon_02"),
+            ("拾错藏珍", "icon_05"),
             ("能力测试", "icon_08"),
+            ("我的课程", "icon_07"),
+            ("快速答疑", "icon_04"),
+            ("复习打卡", "icon_03"),
         ]
-        let courses: [(String, String)] = AppFeatures.showExternalCourses
-            ? [("我的课程", "icon_07")]
-            : []
-        let extra: [(String, String)] = [
-            ("思政刷题", "icon_04"),
-            ("复习计划", "icon_03"),
-        ]
-        return core + courses + extra
     }
 
     var body: some View {
@@ -42,7 +44,13 @@ struct HomeView: View {
                     .foregroundColor(Color(hex: "111111"))
                     .frame(maxWidth: .infinity)
                     .padding(.top, 8)
-                    .padding(.bottom, 16)
+                    .padding(.bottom, 12)
+
+                if let board = reviewBoard {
+                    ReviewBoardBody(board: board, onOpenTask: { _ in onOpenReviewPlan() })
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
 
                 if !bannerURLs.isEmpty {
                     bannerSection
@@ -56,45 +64,52 @@ struct HomeView: View {
             }
         }
         .background(Color(hex: "F5F7FA"))
-        .onAppear { reloadHome() }
+        .onAppear {
+            applyBannerSnapshot()
+            reloadHome()
+        }
+        .onChange(of: reloadTrigger) { _ in reloadHome() }
         .onReceive(timer) { _ in
             guard bannerURLs.count > 1 else { return }
             currentBannerIndex = (currentBannerIndex + 1) % bannerURLs.count
         }
     }
 
+    private var currentBannerAspect: CGFloat {
+        if bannerAspects.indices.contains(currentBannerIndex), bannerAspects[currentBannerIndex] > 0 {
+            return bannerAspects[currentBannerIndex]
+        }
+        return bannerURLs.isEmpty ? 0 : 2.34375
+    }
+
     private var bannerSection: some View {
-        ZStack(alignment: .bottom) {
-            TabView(selection: $currentBannerIndex) {
-                ForEach(bannerURLs.indices, id: \.self) { index in
-                    AsyncImage(url: URL(string: bannerURLs[index])) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().scaledToFill()
-                        default:
-                            Color(hex: "E0E0E0")
+        Color.clear
+            .aspectRatio(currentBannerAspect, contentMode: .fit)
+            .overlay(
+                ZStack(alignment: .bottom) {
+                    TabView(selection: $currentBannerIndex) {
+                        ForEach(bannerURLs.indices, id: \.self) { index in
+                            HomeBannerImage(urlString: bannerURLs[index])
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+                            .tag(index)
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .tag(index)
-                }
-            }
-            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
 
-            HStack(spacing: 5) {
-                ForEach(bannerURLs.indices, id: \.self) { index in
-                    Capsule()
-                        .fill(Color.white.opacity(index == currentBannerIndex ? 1 : 0.45))
-                        .frame(width: index == currentBannerIndex ? 16 : 5, height: 5)
+                    HStack(spacing: 5) {
+                        ForEach(bannerURLs.indices, id: \.self) { index in
+                            Capsule()
+                                .fill(Color.white.opacity(index == currentBannerIndex ? 1 : 0.45))
+                                .frame(width: index == currentBannerIndex ? 16 : 5, height: 5)
+                        }
+                    }
+                    .padding(.bottom, 10)
                 }
-            }
-            .padding(.bottom, 10)
-        }
-        .frame(height: 152)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(color: Color(hex: "1DB8B5").opacity(0.16), radius: 14, x: 0, y: 6)
-        .padding(.horizontal, 16)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .shadow(color: Color(hex: "1DB8B5").opacity(0.16), radius: 14, x: 0, y: 6)
+            .padding(.horizontal, 16)
     }
 
     private var menuGridSection: some View {
@@ -135,93 +150,99 @@ struct HomeView: View {
 
     private var gradeGoalsCard: some View {
         VStack(spacing: 0) {
-            Color(hex: "00E5D4").frame(height: 3)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .stroke(Color(hex: "00E5D4"), lineWidth: 2)
-                            .frame(width: 18, height: 18)
-                        Circle()
-                            .fill(Color(hex: "00E5D4"))
-                            .frame(width: 7, height: 7)
+            HStack(spacing: 10) {
+                Capsule()
+                    .fill(Color(hex: "35BDB4"))
+                    .frame(width: 4, height: 17)
+                    .shadow(color: Color(hex: "4ECDC4").opacity(0.45), radius: 2, y: 1)
+                Text("各科成绩目标")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color(hex: "1A1F26"))
+                Spacer()
+                Button(action: onOpenGradeTarget) {
+                    HStack(spacing: 3) {
+                        Text("设置目标")
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundColor(Color(hex: "4B5563"))
+                        Text("›")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(hex: "9CA3AF"))
                     }
-                    Text("各科成绩目标")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(Color(hex: "00E5D4"))
-                    Spacer()
-                    Button(action: onOpenGradeTarget) {
-                        HStack(spacing: 3) {
-                            Text("成绩倒推")
-                                .font(.system(size: 11, weight: .medium))
-                            Text("›")
-                                .font(.system(size: 12))
-                        }
-                        .foregroundColor(Color(hex: "00E5D4"))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color(hex: "00E5D4").opacity(0.1))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color(hex: "00E5D4"), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 11)
+                    .frame(height: 30)
+                    .background(Color.white)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "0F172A").opacity(0.07), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 15)
+            .padding(.bottom, 13)
 
-                if gradeGoals.isEmpty {
-                    Button(action: onOpenGradeTarget) {
-                        VStack(spacing: 6) {
-                            Text("暂无科目")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(hex: "1A1A1A"))
-                            Text("完成科目登记或在成绩倒推中添加科目后，这里会显示各科目标")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(hex: "9AA3AF"))
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 18)
+            if gradeGoals.isEmpty {
+                Button(action: onOpenGradeTarget) {
+                    VStack(spacing: 6) {
+                        Text("暂无科目")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color(hex: "1A1F26"))
+                        Text("完成科目登记或在成绩目标中添加科目后，这里会显示各科目标")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(hex: "9AA3AF"))
+                            .multilineTextAlignment(.center)
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    ForEach(Array(gradeGoals.enumerated()), id: \.element.id) { index, goal in
-                        HStack(spacing: 8) {
-                            HStack(spacing: 8) {
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 18)
+                }
+                .buttonStyle(.plain)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array((showAllGoals ? gradeGoals : Array(gradeGoals.prefix(6))).enumerated()), id: \.element.id) { index, goal in
+                        HStack(spacing: 10) {
+                            HStack(alignment: .firstTextBaseline, spacing: 2) {
                                 Text(goal.name)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(Color(hex: "1A1A1A"))
+                                    .font(.system(size: 14.5, weight: .medium))
+                                    .foregroundColor(Color(hex: "1A1F26"))
                                     .lineLimit(1)
                                 if !goal.credit.isEmpty {
                                     Text(goal.credit)
                                         .font(.system(size: 12))
-                                        .foregroundColor(Color(hex: "9AA3AF"))
+                                        .foregroundColor(Color(hex: "8A94A0"))
                                         .lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
                             }
                             Text(goal.scored ? "出分 \(goal.goal)" : "目标 \(goal.goal)")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white)
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .foregroundColor(Color(hex: "3FBFB5"))
                                 .padding(.horizontal, 12)
-                                .padding(.vertical, 5)
-                                .background(Color(hex: "00E5D4"))
+                                .frame(height: 26)
+                                .background(Color(hex: "EEFAFA"))
+                                .overlay(Capsule().stroke(Color(hex: "4ECDC4").opacity(0.4), lineWidth: 1))
                                 .clipShape(Capsule())
                         }
-                        .padding(.vertical, 12)
-                        if index != gradeGoals.count - 1 {
-                            Color(hex: "F0F2F5").frame(height: 0.5)
+                        .frame(minHeight: 52)
+                        .padding(.horizontal, 16)
+                        if index != (showAllGoals ? gradeGoals.count : min(6, gradeGoals.count)) - 1 {
+                            Color(hex: "0F172A").opacity(0.05).frame(height: 1).padding(.horizontal, 16)
                         }
                     }
+                    if !showAllGoals && gradeGoals.count > 6 {
+                        Button("查看更多") { showAllGoals = true }
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(hex: "4ECDC4"))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
                 }
+                .padding(.bottom, 5)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
         }
         .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .shadow(color: Color(hex: "1DB8B5").opacity(0.08), radius: 12, x: 0, y: 4)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(hex: "0F172A").opacity(0.07), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color(hex: "0F172A").opacity(0.05), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 16)
     }
 
@@ -229,26 +250,51 @@ struct HomeView: View {
         switch title {
         case "科目登记": onOpenSubjectRegister()
         case "GPA计算": onOpenGpa()
-        case "成绩倒推": onOpenGradeTarget()
+        case "成绩目标": onOpenGradeTarget()
         case "能力测试": onOpenAssessment()
+        case "拾错藏珍": onOpenMyAsk()
         case "快速答疑": onOpenAiChat()
         case "我的课程": onOpenCourse()
-        case "思政刷题": onOpenPoliticsQuiz()
-        case "复习计划": onOpenReviewPlan()
+        case "复习打卡": onOpenReviewPlan()
         default: break
         }
     }
 
     private func reloadHome() {
+        applyBannerSnapshot()
+        let hint = AcademicCalc.inferGpaSemesterCode(session.schoolyear)
+        let semesterHint = hint.isEmpty ? session.semester : hint
+        let loggedIn = !(ApiService.shared.token ?? "").isEmpty
         Task {
-            async let banners = ApiService.shared.fetchBannerUrls()
-            async let goals = AcademicHomeService.loadGradeGoals()
-            let (urls, items) = await (banners, goals)
+            async let bannersTask = HomeSnapshotStore.refreshBanners()
+            async let goals = AcademicHomeService.loadGradeGoals(semesterHint: semesterHint)
+            let urls = await bannersTask
             await MainActor.run {
-                bannerURLs = urls
-                if currentBannerIndex >= urls.count { currentBannerIndex = 0 }
-                gradeGoals = items
+                if let urls {
+                    bannerURLs = urls
+                    bannerAspects = HomeSnapshotStore.bannerAspects
+                    if currentBannerIndex >= max(urls.count, 1) { currentBannerIndex = 0 }
+                }
             }
+            let items = await goals
+            var review: ReviewBoard?
+            if loggedIn, case .success(let value) = await AcademicApi.fetchReviewBoard() {
+                review = value.hasPlan ? value : nil
+            }
+            await MainActor.run {
+                gradeGoals = items
+                showAllGoals = false
+                reviewBoard = review
+                HomeSnapshotStore.gradeGoals = items
+                HomeSnapshotStore.reviewBoard = review
+            }
+        }
+    }
+
+    private func applyBannerSnapshot() {
+        if !HomeSnapshotStore.banners.isEmpty {
+            bannerURLs = HomeSnapshotStore.banners
+            bannerAspects = HomeSnapshotStore.bannerAspects
         }
     }
 }
@@ -272,5 +318,120 @@ struct HomeFeaturePlaceholderView: View {
             Spacer()
         }
         .background(Color(hex: "F5F7FA").ignoresSafeArea())
+    }
+}
+
+enum HomeSnapshotStore {
+    private static let urlsKey = "home_banner_urls"
+    private static let aspectsKey = "home_banner_aspects"
+
+    static var banners: [String] = UserDefaults.standard.stringArray(forKey: urlsKey) ?? []
+    static var bannerAspects: [CGFloat] = (UserDefaults.standard.array(forKey: aspectsKey) as? [Double])?.map { CGFloat($0) } ?? []
+    static var gradeGoals: [HomeGradeGoalItem] = []
+    static var reviewBoard: ReviewBoard?
+    static var bannersLoaded = false
+
+    static func prefetchBanners() {
+        Task { _ = await refreshBanners() }
+    }
+
+    @discardableResult
+    static func refreshBanners() async -> [String]? {
+        let urls = await ApiService.shared.fetchBannerUrls()
+        guard let urls else { return banners.isEmpty ? nil : banners }
+        bannersLoaded = true
+        persist(urls: urls, aspects: bannerAspects.count == urls.count ? bannerAspects : Array(repeating: 2.34375, count: urls.count))
+        HomeBannerImageCache.prefetch(urls)
+        Task {
+            let aspects = await HomeBannerMetrics.aspects(for: urls)
+            persist(urls: urls, aspects: aspects)
+        }
+        return urls
+    }
+
+    private static func persist(urls: [String], aspects: [CGFloat]) {
+        banners = urls
+        bannerAspects = aspects
+        UserDefaults.standard.set(urls, forKey: urlsKey)
+        UserDefaults.standard.set(aspects.map { Double($0) }, forKey: aspectsKey)
+    }
+}
+
+private enum HomeBannerMetrics {
+    static func aspects(for urls: [String]) async -> [CGFloat] {
+        await withTaskGroup(of: (Int, CGFloat).self) { group in
+            for (index, urlString) in urls.enumerated() {
+                group.addTask { (index, await aspect(for: urlString)) }
+            }
+            var result = Array(repeating: CGFloat(2.34375), count: urls.count)
+            for await item in group {
+                if item.1 > 0 { result[item.0] = item.1 }
+            }
+            return result
+        }
+    }
+
+    private static func aspect(for urlString: String) async -> CGFloat {
+        if let cached = HomeBannerImageCache.image(for: urlString) {
+            let width = cached.size.width * cached.scale
+            let height = cached.size.height * cached.scale
+            return (width > 0 && height > 0) ? width / height : 0
+        }
+        guard let image = await HomeBannerImageCache.download(urlString) else { return 0 }
+        let width = image.size.width * image.scale
+        let height = image.size.height * image.scale
+        guard width > 0, height > 0 else { return 0 }
+        return width / height
+    }
+}
+
+private enum HomeBannerImageCache {
+    private static let memory = NSCache<NSString, UIImage>()
+
+    static func image(for urlString: String) -> UIImage? {
+        memory.object(forKey: urlString as NSString)
+    }
+
+    static func prefetch(_ urls: [String]) {
+        urls.forEach { url in
+            Task { _ = await download(url) }
+        }
+    }
+
+    static func download(_ urlString: String) async -> UIImage? {
+        if let cached = image(for: urlString) { return cached }
+        guard let url = URL(string: urlString) else { return nil }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let image = UIImage(data: data) else { return nil }
+            memory.setObject(image, forKey: urlString as NSString)
+            return image
+        } catch {
+            return nil
+        }
+    }
+}
+
+private struct HomeBannerImage: View {
+    let urlString: String
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Color(hex: "E0E0E0")
+            }
+        }
+        .onAppear {
+            image = HomeBannerImageCache.image(for: urlString)
+            if image == nil {
+                Task {
+                    let downloaded = await HomeBannerImageCache.download(urlString)
+                    await MainActor.run { image = downloaded }
+                }
+            }
+        }
     }
 }

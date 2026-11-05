@@ -44,9 +44,57 @@ enum AcademicCalc {
     }
 
     static func isPastGpaSemester(_ code: String, current: String) -> Bool {
-        guard let cur = gpaSemesterOrder.firstIndex(of: current.trimmingCharacters(in: .whitespaces)),
-              let idx = gpaSemesterOrder.firstIndex(of: code.trimmingCharacters(in: .whitespaces)) else { return false }
+        let trimmedCode = code.trimmingCharacters(in: .whitespaces)
+        let trimmedCurrent = current.trimmingCharacters(in: .whitespaces)
+        guard let cur = gpaSemesterOrder.firstIndex(of: trimmedCurrent) else { return false }
+        guard let idx = gpaSemesterOrder.firstIndex(of: trimmedCode) else {
+            return trimmedCode != trimmedCurrent
+        }
         return idx < cur
+    }
+
+    static func subjectRegisterCredits(_ courses: [GpaCourseRow]) -> Double {
+        registeredCreditsOf(courses)
+    }
+
+    static func termPlanRows(registered: [GpaCourseRow], planned: [GpaCourseRow]) -> [GpaCourseRow] {
+        let byName = Dictionary(
+            planned.filter { !$0.subjectName.trimmingCharacters(in: .whitespaces).isEmpty }
+                .map { ($0.subjectName.trimmingCharacters(in: .whitespaces), $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        let registeredNames = Set(registered.map { $0.subjectName.trimmingCharacters(in: .whitespaces) })
+        let merged = registered.map { row -> GpaCourseRow in
+            guard let saved = byName[row.subjectName.trimmingCharacters(in: .whitespaces)] else { return row }
+            var next = row
+            if next.examScore.trimmingCharacters(in: .whitespaces).isEmpty {
+                next.examScore = saved.examScore
+            }
+            if next.credits.trimmingCharacters(in: .whitespaces).isEmpty {
+                next.credits = saved.credits
+            }
+            return next
+        }
+        let extras = byName.values.filter { !registeredNames.contains($0.subjectName.trimmingCharacters(in: .whitespaces)) }
+        return merged + extras
+    }
+
+    static func backtrackTotalCredits(isNow: Bool, historyEntered: Double, termCredits: Double, manualTotal: Double?) -> Double {
+        let auto = max(historyEntered, 0) + max(termCredits, 0)
+        return isNow ? auto : (manualTotal ?? auto)
+    }
+
+    static func gpaPointToScoreRange(_ point: Double) -> String {
+        if point >= 4.0 { return "90+" }
+        if point >= 3.7 { return "85~89" }
+        if point >= 3.3 { return "82~84" }
+        if point >= 3.0 { return "78~81" }
+        if point >= 2.7 { return "75~77" }
+        if point >= 2.3 { return "72~74" }
+        if point >= 2.0 { return "68~71" }
+        if point >= 1.5 { return "64~67" }
+        if point >= 1.0 { return "60~63" }
+        return "<60"
     }
 
     static func pastRegisteredCredits(_ current: String, _ coursesBySemester: [String: [GpaCourseRow]]) -> Double {

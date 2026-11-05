@@ -187,16 +187,24 @@ enum AiImageCropProcessor {
         let rect = CGRect(x: left, y: top, width: max(1, right - left), height: max(1, bottom - top))
         guard let cropped = cgImage.cropping(to: rect) else { return bitmap }
         let result = UIImage(cgImage: cropped, scale: bitmap.scale, orientation: .up)
-        let maxSide: CGFloat = 1080
-        let maxDim = max(result.size.width, result.size.height)
-        if maxDim <= maxSide { return result }
+        return jpegImage(result, maxSide: 1080, quality: 0.82) ?? result
+    }
+
+    static func jpegForUpload(_ image: UIImage) -> Data? {
+        jpegImage(fixOrientation(image), maxSide: 1080, quality: 0.82)?.jpegData(compressionQuality: 0.82)
+            ?? fixOrientation(image).jpegData(compressionQuality: 0.82)
+    }
+
+    private static func jpegImage(_ image: UIImage, maxSide: CGFloat, quality: CGFloat) -> UIImage? {
+        let maxDim = max(image.size.width, image.size.height)
+        if maxDim <= maxSide { return image }
         let ratio = maxSide / maxDim
-        let newSize = CGSize(width: result.size.width * ratio, height: result.size.height * ratio)
-        UIGraphicsBeginImageContextWithOptions(newSize, false, 1)
-        result.draw(in: CGRect(origin: .zero, size: newSize))
+        let newSize = CGSize(width: image.size.width * ratio, height: image.size.height * ratio)
+        UIGraphicsBeginImageContextWithOptions(newSize, true, 1)
+        image.draw(in: CGRect(origin: .zero, size: newSize))
         let scaled = UIGraphicsGetImageFromCurrentImageContext()
         UIGraphicsEndImageContext()
-        return scaled ?? result
+        return scaled ?? image
     }
 
     static func rotate(_ image: UIImage, degrees: CGFloat) -> UIImage {
@@ -229,19 +237,119 @@ enum AiImageCropProcessor {
         return scaled ?? image
     }
 
-    static func recognizeTextObservations(_ image: UIImage) -> [CGRect] {
+    private struct OcrLine {
+        let text: String
+        let box: CGRect // top-left origin, normalized 0...1
+    }
+
+    private static let questionStartPattern = try! NSRegularExpression(
+        pattern: #"^\s*(\d{1,3}\s*[、.．。:：)）]|例\s*\d*\s*[、.．:：]?|第\s*\d{1,3}\s*题|[一二三四五六七八九十]{1,3}\s*[、.．])"#
+    )
+
+    private static func recognizeChineseLines(_ image: UIImage) -> [OcrLine] {
         guard let cgImage = fixOrientation(image).cgImage else { return [] }
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .fast
+        request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
         request.recognitionLanguages = ["zh-Hans", "en-US"]
         let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up, options: [:])
         _ = try? handler.perform([request])
-        return (request.results ?? []).map(\.boundingBox)
+        return (request.results ?? []).compactMap { observation in
+            guard let text = observation.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { return nil }
+            let box = observation.boundingBox
+            return OcrLine(
+                text: text,
+                box: CGRect(x: box.minX, y: 1 - box.maxY, width: box.width, height: box.height)
+            )
+        }
+        .sorted { $0.box.minY < $1.box.minY }
     }
 
     static func scoreUprightText(_ image: UIImage) -> Int {
-        recognizeTextObservations(image).count
+        let lines = recognizeChineseLines(image)
+        let joined = lines.map(\.text).joined()
+        let chars = joined.reduce(0) { count, ch in
+            ch.isLetter || ch.isNumber || (ch >= "\u{4e00}" && ch <= "\u{9fff}") ? count + 1 : count
+        }
+        if chars <= 0 { return 0 }
+        let lineBonus = lines.reduce(0) { $0 + ($1.box.width >= $1.box.height ? 8 : 0) }
+        return chars + lineBonus + questionOrderBonus(lines) + lineInkBonus(image, lines: lines)
+    }
+
+    private static func questionOrderBonus(_ lines: [OcrLine]) -> Int {
+        let startNum = try! NSRegularExpression(pattern: #"^\s*(\d{1,3})\s*[、.．。:：)）]"#)
+        var numbered: [(y: CGFloat, number: Int)] = []
+        for line in lines {
+            let ns = line.text as NSString
+            guard let match = startNum.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)),
+                  match.numberOfRanges > 1 else { continue }
+            let number = Int(ns.substring(with: match.range(at: 1))) ?? 0
+            guard (1...199).contains(number) else { continue }
+            numbered.append((line.box.midY, number))
+        }
+        guard numbered.count >= 2 else { return 0 }
+        numbered.sort { $0.y < $1.y }
+        var increasing = 0
+        var decreasing = 0
+        for index in 1..<numbered.count {
+            if numbered[index].number > numbered[index - 1].number { increasing += 1 }
+            else if numbered[index].number < numbered[index - 1].number { decreasing += 1 }
+        }
+        var bonus = (increasing - decreasing) * 40
+        if increasing > decreasing, numbered.first!.y < 0.48 { bonus += 24 }
+        if decreasing > increasing { bonus -= 24 }
+        return bonus
+    }
+
+    private static func lineInkBonus(_ image: UIImage, lines: [OcrLine]) -> Int {
+        var better = 0
+        var worse = 0
+        for line in lines {
+            let box = line.box
+            guard box.height > 0.012, box.width > 0.04 else { continue }
+            let midY = box.midY
+            let topInk = inkInRect(image, CGRect(x: box.minX, y: box.minY, width: box.width, height: midY - box.minY))
+            let botInk = inkInRect(image, CGRect(x: box.minX, y: midY, width: box.width, height: box.maxY - midY))
+            if CGFloat(botInk) > CGFloat(topInk) * 1.12 { better += 1 }
+            else if CGFloat(topInk) > CGFloat(botInk) * 1.12 { worse += 1 }
+        }
+        return (better - worse) * 10
+    }
+
+    private static func inkInRect(_ image: UIImage, _ norm: CGRect) -> Int {
+        guard let cgImage = fixOrientation(image).cgImage else { return 0 }
+        let imgW = CGFloat(cgImage.width)
+        let imgH = CGFloat(cgImage.height)
+        let left = Int((norm.minX * imgW).rounded()).clamped(to: 0...(cgImage.width - 1))
+        let top = Int((norm.minY * imgH).rounded()).clamped(to: 0...(cgImage.height - 1))
+        let right = Int((norm.maxX * imgW).rounded()).clamped(to: (left + 1)...cgImage.width)
+        let bottom = Int((norm.maxY * imgH).rounded()).clamped(to: (top + 1)...cgImage.height)
+        let cropW = max(1, right - left)
+        let cropH = max(1, bottom - top)
+        guard let cropped = cgImage.cropping(to: CGRect(x: left, y: top, width: cropW, height: cropH)) else { return 0 }
+        let sampleW = min(24, cropW)
+        let sampleH = min(12, cropH)
+        guard let ctx = CGContext(
+            data: nil,
+            width: sampleW,
+            height: sampleH,
+            bitsPerComponent: 8,
+            bytesPerRow: sampleW * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return 0 }
+        ctx.interpolationQuality = .low
+        ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: sampleW, height: sampleH))
+        guard let data = ctx.data else { return 0 }
+        let ptr = data.bindMemory(to: UInt8.self, capacity: sampleW * sampleH * 4)
+        var ink = 0
+        for i in 0..<(sampleW * sampleH) {
+            let o = i * 4
+            let lum = (Int(ptr[o]) * 299 + Int(ptr[o + 1]) * 587 + Int(ptr[o + 2]) * 114) / 1000
+            if lum < 140 { ink += 1 }
+        }
+        return ink
     }
 
     static func rotateToTextUpright(_ image: UIImage) -> UIImage {
@@ -252,6 +360,7 @@ enum AiImageCropProcessor {
         let landscapeFirst = score90 >= score270 ? 90 : 270
         let landscapeScore = max(score90, score270)
         let landscapeOther = landscapeFirst == 90 ? score270 : score90
+        // 横拍时 90/270 都能认出横排字，分差不够就不要转，否则会整页颠倒。
         let landscapeOk = landscapeScore >= score0 + 12 && landscapeScore >= landscapeOther + 18
         if landscapeOk {
             return rotate(image, degrees: CGFloat(landscapeFirst))
@@ -261,31 +370,66 @@ enum AiImageCropProcessor {
 
     static func detectQuestionCropRatio(_ image: UIImage) -> CropRectRatio? {
         let bitmap = fixOrientation(image)
-        guard let cgImage = bitmap.cgImage else { return nil }
-        let boxes = recognizeTextObservations(bitmap)
-        guard !boxes.isEmpty else { return nil }
-        // Vision boundingBox is normalized with origin at bottom-left.
-        var left = CGFloat.greatestFiniteMagnitude
-        var top = CGFloat.greatestFiniteMagnitude
-        var right: CGFloat = 0
-        var bottom: CGFloat = 0
-        for box in boxes {
-            let minX = box.minX
-            let maxX = box.maxX
-            let minYFromTop = 1 - box.maxY
-            let maxYFromTop = 1 - box.minY
-            left = min(left, minX)
-            right = max(right, maxX)
-            top = min(top, minYFromTop)
-            bottom = max(bottom, maxYFromTop)
+        let lines = recognizeChineseLines(bitmap)
+        let filtered = lines.filter { line in
+            let cy = line.box.midY
+            return !(line.text.count <= 12 && (cy < 0.05 || cy > 0.94))
         }
-        let padX = max(0.06, 12 / CGFloat(cgImage.width))
-        let padY = max(0.05, 12 / CGFloat(cgImage.height))
-        let l = max(0, left - padX)
-        let t = max(0, top - padY)
-        let r = min(1, right + padX)
-        let b = min(1, bottom + padY)
-        if r - l < 0.12 || b - t < 0.08 { return nil }
+        guard !filtered.isEmpty else { return nil }
+
+        let heights = filtered.map(\.box.height).sorted()
+        let lineHeight = heights[heights.count / 2]
+        let gapLimit = max(lineHeight * 1.6, 0.025)
+
+        class Question {
+            var top: CGFloat
+            var bottom: CGFloat
+            var left: CGFloat
+            var right: CGFloat
+            let numbered: Bool
+            init(top: CGFloat, bottom: CGFloat, left: CGFloat, right: CGFloat, numbered: Bool) {
+                self.top = top; self.bottom = bottom; self.left = left; self.right = right; self.numbered = numbered
+            }
+        }
+
+        var questions: [Question] = []
+        for line in filtered {
+            let box = line.box
+            let ns = line.text as NSString
+            let startsNew = questionStartPattern.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil
+            let current = questions.last
+            let farBelow = current.map { box.minY - $0.bottom > gapLimit } ?? false
+            if current == nil || startsNew || (farBelow && !(current?.numbered ?? true)) {
+                questions.append(Question(top: box.minY, bottom: box.maxY, left: box.minX, right: box.maxX, numbered: startsNew))
+            } else if let current {
+                current.bottom = max(current.bottom, box.maxY)
+                current.left = min(current.left, box.minX)
+                current.right = max(current.right, box.maxX)
+            }
+        }
+        guard !questions.isEmpty else { return nil }
+
+        let centerY: CGFloat = 0.5
+        let index = questions.enumerated().min { lhs, rhs in
+            func dist(_ q: Question) -> CGFloat {
+                if centerY < q.top { return q.top - centerY }
+                if centerY > q.bottom { return centerY - q.bottom }
+                return 0
+            }
+            return dist(lhs.element) < dist(rhs.element)
+        }?.offset ?? 0
+        let chosen = questions[index]
+        let nextTop = questions.indices.contains(index + 1) ? questions[index + 1].top : nil
+        let bottomLimit = nextTop.map { $0 - lineHeight * 0.3 } ?? (chosen.bottom + 0.06)
+        let textLeft = filtered.map(\.box.minX).min() ?? chosen.left
+        let textRight = filtered.map(\.box.maxX).max() ?? chosen.right
+        let padX: CGFloat = 0.03
+        let padY: CGFloat = 0.015
+        let l = min(max(min(chosen.left, textLeft) - padX, 0), 1)
+        let r = min(max(max(chosen.right, textRight) + padX, 0), 1)
+        let t = min(max(chosen.top - padY, 0), 1)
+        let b = min(max(max(chosen.bottom + padY, bottomLimit), 0), 1)
+        if r - l < 0.12 || b - t < 0.06 { return nil }
         return CropRectRatio(left: l, top: t, right: r, bottom: b)
     }
 
@@ -365,11 +509,13 @@ enum AppOrientationController {
 final class CameraSessionController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     @Published var isReady = false
     @Published var isCapturing = false
+    @Published var zoomFactor: CGFloat = 1
 
     let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
     private var captureCompletion: ((UIImage?) -> Void)?
     private(set) var captureMode: CaptureSearchMode = .single
+    private var cameraDevice: AVCaptureDevice?
 
     func updateCaptureMode(_ mode: CaptureSearchMode) {
         captureMode = mode
@@ -419,6 +565,7 @@ final class CameraSessionController: NSObject, ObservableObject, AVCapturePhotoC
                 self.session.commitConfiguration()
                 return
             }
+            self.cameraDevice = device
             self.session.addInput(input)
             if self.session.canAddOutput(self.photoOutput) {
                 self.session.addOutput(self.photoOutput)
@@ -426,8 +573,27 @@ final class CameraSessionController: NSObject, ObservableObject, AVCapturePhotoC
             self.session.commitConfiguration()
             self.applyVideoOrientation()
             self.session.startRunning()
-            DispatchQueue.main.async { self.isReady = true }
+            DispatchQueue.main.async {
+                self.zoomFactor = 1
+                self.isReady = true
+            }
         }
+    }
+
+    var maxZoom: CGFloat {
+        guard let device = cameraDevice else { return 1 }
+        return min(device.activeFormat.videoMaxZoomFactor, 8)
+    }
+
+    func setZoom(_ factor: CGFloat) {
+        guard let device = cameraDevice else { return }
+        let next = min(max(factor, 1), maxZoom)
+        do {
+            try device.lockForConfiguration()
+            device.videoZoomFactor = next
+            device.unlockForConfiguration()
+            DispatchQueue.main.async { self.zoomFactor = next }
+        } catch {}
     }
 
     func capturePhoto(orientation: AVCaptureVideoOrientation = .portrait, completion: @escaping (UIImage?) -> Void) {
@@ -520,33 +686,89 @@ struct CaptureModeChip: View {
     }
 }
 
+private let qaCaptureBarColor = Color(hex: "00AFA4")
+private let qaCaptureTopBarHeight: CGFloat = 52
+private let qaCaptureBottomBarHeight: CGFloat = 112
+
+struct QaCaptureTopBar: View {
+    let title: String
+    var closeEnabled: Bool = true
+    var onClose: () -> Void
+    var leading: AnyView? = nil
+    var safeTop: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            Text(title)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white)
+            HStack(spacing: 0) {
+                if let leading {
+                    leading
+                }
+                Spacer(minLength: 0)
+                Button(action: onClose) {
+                    Text("✕")
+                        .font(.system(size: 20))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                }
+                .buttonStyle(.plain)
+                .disabled(!closeEnabled)
+                .padding(.trailing, 6)
+            }
+        }
+        .frame(height: qaCaptureTopBarHeight)
+        .frame(maxWidth: .infinity)
+        .padding(.top, safeTop)
+        .background(qaCaptureBarColor)
+    }
+}
+
 struct CameraCaptureOverlayView: View {
     let onDismiss: () -> Void
     let onPickFromAlbum: () -> Void
     let onImageCaptured: (UIImage, CameraFrameSpec) -> Void
     var onCaptureFailed: (String) -> Void = { _ in }
+    var title: String = "绩满满答疑"
 
     @StateObject private var camera = CameraSessionController()
     @StateObject private var motion = CaptureMotionController()
-    @State private var previewSize: CGSize = .zero
-    @State private var correcting = false
+    @State private var pinchStart: CGFloat = 1
+    @State private var pinching = false
 
     var body: some View {
         GeometryReader { geo in
+            let previewSize = CGSize(
+                width: geo.size.width,
+                height: max(geo.size.height - geo.safeAreaInsets.top - qaCaptureTopBarHeight - qaCaptureBottomBarHeight - geo.safeAreaInsets.bottom, 1)
+            )
             CameraCaptureOverlayCanvas(
-                size: geo.size,
                 camera: camera,
                 buttonSpin: motion.buttonSpin,
-                capturing: camera.isCapturing || correcting,
+                capturing: camera.isCapturing,
+                title: title,
+                safeTop: geo.safeAreaInsets.top,
+                safeBottom: geo.safeAreaInsets.bottom,
                 onPickFromAlbum: onPickFromAlbum,
                 onDismiss: onDismiss,
-                onCapture: { frame in capture(frame: frame, previewSize: geo.size) }
+                onCapture: { capture(previewSize: previewSize) },
+                onPinchChanged: { value in
+                    if !pinching {
+                        pinching = true
+                        pinchStart = camera.zoomFactor
+                    }
+                    camera.setZoom(pinchStart * value)
+                },
+                onPinchEnded: {
+                    pinching = false
+                    pinchStart = 1
+                }
             )
-            .onAppear { previewSize = geo.size }
-            .onChange(of: geo.size) { previewSize = $0 }
         }
         .ignoresSafeArea()
         .onAppear {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             camera.updateCaptureMode(.fullPage)
             camera.start()
             motion.start()
@@ -559,7 +781,7 @@ struct CameraCaptureOverlayView: View {
         }
     }
 
-    private func capture(frame: CGRect, previewSize: CGSize) {
+    private func capture(previewSize: CGSize) {
         guard camera.isReady else {
             onCaptureFailed("相机未就绪，请稍候")
             return
@@ -567,7 +789,7 @@ struct CameraCaptureOverlayView: View {
         let spec = CameraFrameSpec(
             previewWidthPx: previewSize.width,
             previewHeightPx: previewSize.height,
-            frameRect: CropRectPx(left: frame.minX, top: frame.minY, right: frame.maxX, bottom: frame.maxY),
+            frameRect: CropRectPx(left: 0, top: 0, right: previewSize.width, bottom: previewSize.height),
             mode: .fullPage
         )
         camera.capturePhoto(orientation: motion.captureOrientation) { image in
@@ -575,14 +797,7 @@ struct CameraCaptureOverlayView: View {
                 onCaptureFailed("拍照失败，请重试")
                 return
             }
-            correcting = true
-            DispatchQueue.global(qos: .userInitiated).async {
-                let upright = AiImageCropProcessor.rotateToTextUpright(AiImageCropProcessor.fixOrientation(image))
-                DispatchQueue.main.async {
-                    correcting = false
-                    onImageCaptured(upright, spec)
-                }
-            }
+            onImageCaptured(AiImageCropProcessor.fixOrientation(image), spec)
         }
     }
 }
@@ -649,103 +864,120 @@ final class CaptureMotionController: ObservableObject {
 }
 
 private struct CameraCaptureOverlayCanvas: View {
-    let size: CGSize
     @ObservedObject var camera: CameraSessionController
     let buttonSpin: Double
     let capturing: Bool
+    let title: String
+    let safeTop: CGFloat
+    let safeBottom: CGFloat
     var onPickFromAlbum: () -> Void
     var onDismiss: () -> Void
-    var onCapture: (CGRect) -> Void
-
-    private var safeTop: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.top }
-            .first ?? 0
-    }
-
-    private var safeBottom: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom }
-            .first ?? 0
-    }
-
-    private var frameRect: CGRect {
-        let sidePad: CGFloat = 10
-        let albumRow: CGFloat = 52
-        let buttonRow: CGFloat = 56
-        let topReserved = safeTop + albumRow
-        let bottomReserved = safeBottom + buttonRow + 12
-        let width = max(size.width - sidePad * 2, 160)
-        let height = max(size.height - topReserved - bottomReserved, 160)
-        let left = max((size.width - width) / 2, 0)
-        let top = topReserved
-        return CGRect(x: left, y: top, width: width, height: min(height, size.height - bottomReserved - top))
-    }
+    var onCapture: () -> Void
+    var onPinchChanged: (CGFloat) -> Void
+    var onPinchEnded: () -> Void
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black
-            CameraPreviewRepresentable(session: camera.session, mode: .fullPage)
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.72), lineWidth: 2)
-                .frame(width: frameRect.width, height: frameRect.height)
-                .offset(x: frameRect.minX, y: frameRect.minY)
-            VStack(spacing: 8) {
-                Text("+")
-                    .font(.system(size: 34, weight: .light))
-                    .foregroundColor(Color.white.opacity(0.95))
-                Text("对准题目即可拍照")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color.white.opacity(0.92))
-            }
-            .rotationEffect(.degrees(buttonSpin))
-            .frame(width: frameRect.width, height: frameRect.height)
-            .offset(x: frameRect.minX, y: frameRect.minY)
-
-            HStack {
-                Spacer(minLength: 0)
-                CaptureModeChip(text: "相册", active: false, enabled: !capturing, action: onPickFromAlbum)
-                    .rotationEffect(.degrees(buttonSpin))
-                    .padding(.trailing, 16)
-            }
-            .padding(.top, safeTop + 8)
-
-            HStack {
-                if capturing {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "00D7CD")))
-                            .frame(width: 22, height: 22)
-                        Text("正在校正方向")
-                            .font(.system(size: 12))
-                            .foregroundColor(.white)
-                    }
-                    .rotationEffect(.degrees(buttonSpin))
-                } else {
-                    CaptureModeChip(
-                        text: "拍照",
-                        active: true,
-                        enabled: camera.isReady,
-                        backgroundColor: .white,
-                        textColor: Color(hex: "0F172A"),
-                        action: { onCapture(frameRect) }
+        VStack(spacing: 0) {
+            QaCaptureTopBar(
+                title: title,
+                closeEnabled: !capturing,
+                onClose: onDismiss,
+                safeTop: safeTop
+            )
+            ZStack(alignment: .top) {
+                CameraPreviewRepresentable(session: camera.session, mode: .fullPage)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { onPinchChanged($0) }
+                            .onEnded { _ in onPinchEnded() }
                     )
+                Text("对准题目拍照")
+                    .font(.system(size: 12))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
                     .rotationEffect(.degrees(buttonSpin))
-                }
-                Spacer(minLength: 0)
-                CaptureModeChip(
-                    text: "取消",
-                    active: false,
-                    enabled: !capturing,
-                    backgroundColor: Color(hex: "64748B"),
-                    textColor: .white,
-                    action: onDismiss
-                )
-                .rotationEffect(.degrees(buttonSpin))
+                    .padding(.top, 12)
             }
-            .padding(.horizontal, 28)
-            .padding(.bottom, safeBottom + 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.black)
+
+            ZStack {
+                qaCaptureBarColor
+                Button(action: onCapture) {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white, lineWidth: 4)
+                            .frame(width: 72, height: 72)
+                        if capturing {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .frame(width: 28, height: 28)
+                        } else {
+                            Circle()
+                                .fill(Color.white.opacity(camera.isReady ? 1 : 0.5))
+                                .frame(width: 58, height: 58)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(!camera.isReady || capturing)
+
+                HStack {
+                    Spacer()
+                    Button(action: onPickFromAlbum) {
+                        VStack(spacing: 4) {
+                            QaAlbumGlyph()
+                                .frame(width: 28, height: 28)
+                            Text("相册")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(capturing)
+                    .rotationEffect(.degrees(buttonSpin))
+                    .padding(.trailing, 36)
+                }
+            }
+            .frame(height: qaCaptureBottomBarHeight)
+            .padding(.bottom, safeBottom)
+            .background(qaCaptureBarColor)
+        }
+        .background(Color.black)
+    }
+}
+
+private struct QaAlbumGlyph: View {
+    var body: some View {
+        Canvas { context, size in
+            let stroke: CGFloat = 2
+            let rect = CGRect(x: stroke / 2, y: stroke / 2, width: size.width - stroke, height: size.height - stroke)
+            context.stroke(
+                Path(roundedRect: rect, cornerRadius: 5),
+                with: .color(.white),
+                lineWidth: stroke
+            )
+            context.fill(
+                Path(ellipseIn: CGRect(
+                    x: size.width * 0.68 - size.width * 0.09,
+                    y: size.height * 0.32 - size.width * 0.09,
+                    width: size.width * 0.18,
+                    height: size.width * 0.18
+                )),
+                with: .color(.white)
+            )
+            var mountain = Path()
+            mountain.move(to: CGPoint(x: size.width * 0.16, y: size.height * 0.80))
+            mountain.addLine(to: CGPoint(x: size.width * 0.42, y: size.height * 0.46))
+            mountain.addLine(to: CGPoint(x: size.width * 0.60, y: size.height * 0.66))
+            mountain.addLine(to: CGPoint(x: size.width * 0.70, y: size.height * 0.56))
+            mountain.addLine(to: CGPoint(x: size.width * 0.84, y: size.height * 0.80))
+            mountain.closeSubpath()
+            context.fill(mountain, with: .color(.white))
         }
     }
 }
@@ -801,6 +1033,8 @@ struct ImageCropDialogView: View {
     let sourceImage: UIImage
     let initialRatio: CropRectRatio?
     var allowRetake: Bool = false
+    var retakeLabel: String = "重拍"
+    var title: String = "框选题目"
     var onRetake: () -> Void = {}
     let onCancel: () -> Void
     let onConfirm: (UIImage) -> Void
@@ -819,6 +1053,8 @@ struct ImageCropDialogView: View {
         sourceImage: UIImage,
         initialRatio: CropRectRatio?,
         allowRetake: Bool = false,
+        retakeLabel: String = "重拍",
+        title: String = "框选题目",
         onRetake: @escaping () -> Void = {},
         onCancel: @escaping () -> Void,
         onConfirm: @escaping (UIImage) -> Void
@@ -826,6 +1062,8 @@ struct ImageCropDialogView: View {
         self.sourceImage = sourceImage
         self.initialRatio = initialRatio
         self.allowRetake = allowRetake
+        self.retakeLabel = retakeLabel
+        self.title = title
         self.onRetake = onRetake
         self.onCancel = onCancel
         self.onConfirm = onConfirm
@@ -837,107 +1075,104 @@ struct ImageCropDialogView: View {
         case move
         case topLeft, topRight, bottomLeft, bottomRight
         case top, bottom, left, right
-
-        var isCorner: Bool {
-            switch self {
-            case .topLeft, .topRight, .bottomLeft, .bottomRight: return true
-            default: return false
-            }
-        }
-    }
-
-    private var hintText: String {
-        if detecting { return "正在自动框选题目…" }
-        if autoRatio != nil { return "已自动框选题目，可拖动或拉四角调整" }
-        return "可拖动裁剪框和四边四角调整范围"
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack {
-                Text("裁剪图片")
-                    .font(.system(size: 16))
-                    .foregroundColor(Color(hex: "1F2937"))
-                Spacer()
-                Button("✕", action: onCancel)
-                    .font(.system(size: 18))
-                    .foregroundColor(Color(hex: "6B7280"))
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                QaCaptureTopBar(
+                    title: title,
+                    closeEnabled: !loading,
+                    onClose: onCancel,
+                    leading: AnyView(
+                        HStack(spacing: 0) {
+                            Button(action: { rotateWorkingImage(-90) }) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 40, height: 40)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(loading || detecting)
+                            Button(action: { rotateWorkingImage(90) }) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(.white)
+                                    .frame(width: 40, height: 40)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(loading || detecting)
+                        }
+                        .padding(.leading, 8)
+                    ),
+                    safeTop: geo.safeAreaInsets.top
+                )
+                ZStack {
+                    Color(hex: "F3F4F6")
+                    cropCanvas
+                    if detecting || loading {
+                        ProgressView()
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                HStack {
+                    Button(action: { if allowRetake { onRetake() } else { onCancel() } }) {
+                        Text(allowRetake ? retakeLabel : "取消")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 96, height: 36)
+                            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white, lineWidth: 1.5))
+                    }
+                    .buttonStyle(.plain)
                     .disabled(loading)
-            }
-            HStack {
-                Text(hintText)
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "6B7280"))
-                Spacer()
-                Button("旋转") { rotateWorkingImage() }
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "00AFA4"))
+                    Spacer()
+                    Button(action: confirmCrop) {
+                        Text("确定")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(qaCaptureBarColor)
+                            .frame(width: 96, height: 36)
+                            .background(Color.white.opacity(loading || detecting ? 0.6 : 1), in: RoundedRectangle(cornerRadius: 18))
+                    }
+                    .buttonStyle(.plain)
                     .disabled(loading || detecting)
-            }
-            ZStack {
-                Color(hex: "F3F4F6")
-                cropCanvas
-                if detecting || loading {
-                    ProgressView()
                 }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            HStack(spacing: 10) {
-                cropAction("取消", color: Color(hex: "334155"), bg: Color(hex: "E2E8F0"), action: onCancel)
-                if allowRetake {
-                    cropAction("重拍", color: Color(hex: "0F766E"), bg: Color(hex: "E2E8F0"), action: onRetake)
-                }
-                Button(action: confirmCrop) {
-                    Text("确定")
-                        .font(.system(size: 15))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background((loading || detecting) ? Color(hex: "94A3B8") : Color(hex: "00AFA4"), in: RoundedRectangle(cornerRadius: 12))
-                }
-                .disabled(loading || detecting)
+                .padding(.horizontal, 24)
+                .frame(height: 72)
+                .padding(.bottom, geo.safeAreaInsets.bottom)
+                .background(qaCaptureBarColor)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white.ignoresSafeArea())
-        .onAppear { runAutoDetect(resetRect: true) }
+        .ignoresSafeArea()
+        .background(Color(hex: "F3F4F6").ignoresSafeArea())
+        .onAppear { prepareUprightAndDetect() }
     }
 
-    private func cropAction(_ title: String, color: Color, bg: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 15))
-                .foregroundColor(color)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(bg, in: RoundedRectangle(cornerRadius: 12))
-        }
-        .disabled(loading)
-    }
-
-    private func runAutoDetect(resetRect: Bool) {
-        detecting = true
-        userAdjusted = false
-        let image = workingImage
-        DispatchQueue.global(qos: .userInitiated).async {
-            let ratio = AiImageCropProcessor.detectQuestionCropRatio(image) ?? initialRatio
-            DispatchQueue.main.async {
-                autoRatio = ratio
-                detecting = false
-                if resetRect, viewportSize.width > 0 {
-                    cropRect = AiImageCropProcessor.initialCropRect(in: viewportSize, image: image, ratio: ratio)
-                }
-            }
-        }
-    }
-
-    private func rotateWorkingImage() {
+    private func prepareUprightAndDetect() {
         loading = true
         detecting = true
         userAdjusted = false
-        let rotated = AiImageCropProcessor.rotate(workingImage, degrees: 90)
+        let source = workingImage
+        DispatchQueue.global(qos: .userInitiated).async {
+            let upright = AiImageCropProcessor.rotateToTextUpright(AiImageCropProcessor.fixOrientation(source))
+            let ratio = AiImageCropProcessor.detectQuestionCropRatio(upright) ?? initialRatio
+            DispatchQueue.main.async {
+                workingImage = upright
+                autoRatio = ratio
+                loading = false
+                detecting = false
+                if viewportSize.width > 0 {
+                    cropRect = AiImageCropProcessor.initialCropRect(in: viewportSize, image: upright, ratio: ratio)
+                }
+            }
+        }
+    }
+
+    private func rotateWorkingImage(_ degrees: CGFloat) {
+        loading = true
+        detecting = true
+        userAdjusted = false
+        let rotated = AiImageCropProcessor.rotate(workingImage, degrees: degrees)
         workingImage = rotated
         DispatchQueue.global(qos: .userInitiated).async {
             let ratio = AiImageCropProcessor.detectQuestionCropRatio(rotated)
@@ -972,49 +1207,54 @@ struct ImageCropDialogView: View {
                     path.addRect(CGRect(origin: .zero, size: geo.size))
                     path.addRect(cropRect)
                 }
-                .fill(Color.black.opacity(0.46), style: FillStyle(eoFill: true))
+                .fill(Color.black.opacity(0.47), style: FillStyle(eoFill: true))
+                .allowsHitTesting(false)
 
-                Rectangle()
-                    .stroke(Color.white, lineWidth: 1)
-                    .frame(width: cropRect.width, height: cropRect.height)
-                    .position(x: cropRect.midX, y: cropRect.midY)
-
-                ForEach(handlePoints, id: \.kind) { item in
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: item.kind.isCorner ? 22 : 16)
-                        .position(item.point)
-                        .gesture(dragGesture(kind: item.kind))
-                }
-
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(width: cropRect.width, height: cropRect.height)
-                    .position(x: cropRect.midX, y: cropRect.midY)
-                    .gesture(dragGesture(kind: .move))
+                CropFrameOverlay(rect: cropRect)
+                    .allowsHitTesting(false)
             }
+            .contentShape(Rectangle())
+            .gesture(cropDragGesture)
             .onAppear { applyViewport(geo.size) }
             .onChange(of: geo.size) { applyViewport($0) }
         }
-        .padding(8)
+        .padding(0)
     }
 
-    private struct CropHandleItem {
-        let kind: CropDragKind
-        let point: CGPoint
-    }
-
-    private var handlePoints: [CropHandleItem] {
-        [
-            CropHandleItem(kind: .topLeft, point: CGPoint(x: cropRect.minX, y: cropRect.minY)),
-            CropHandleItem(kind: .topRight, point: CGPoint(x: cropRect.maxX, y: cropRect.minY)),
-            CropHandleItem(kind: .bottomLeft, point: CGPoint(x: cropRect.minX, y: cropRect.maxY)),
-            CropHandleItem(kind: .bottomRight, point: CGPoint(x: cropRect.maxX, y: cropRect.maxY)),
-            CropHandleItem(kind: .top, point: CGPoint(x: cropRect.midX, y: cropRect.minY)),
-            CropHandleItem(kind: .bottom, point: CGPoint(x: cropRect.midX, y: cropRect.maxY)),
-            CropHandleItem(kind: .left, point: CGPoint(x: cropRect.minX, y: cropRect.midY)),
-            CropHandleItem(kind: .right, point: CGPoint(x: cropRect.maxX, y: cropRect.midY))
-        ]
+    private struct CropFrameOverlay: View {
+        let rect: CGRect
+        var body: some View {
+            Canvas { context, _ in
+                let r = rect
+                context.stroke(Path(r), with: .color(.white), lineWidth: 3)
+                context.stroke(Path(r), with: .color(Color(hex: "00AFA4")), lineWidth: 1.5)
+                let len: CGFloat = 26
+                let halo: CGFloat = 7
+                let stroke: CGFloat = 4
+                func corner(_ origin: CGPoint, dx: CGFloat, dy: CGFloat) {
+                    var path = Path()
+                    path.move(to: CGPoint(x: origin.x + dx, y: origin.y))
+                    path.addLine(to: origin)
+                    path.addLine(to: CGPoint(x: origin.x, y: origin.y + dy))
+                    context.stroke(path, with: .color(.white), lineWidth: halo)
+                    context.stroke(path, with: .color(Color(hex: "00AFA4")), lineWidth: stroke)
+                }
+                corner(CGPoint(x: r.minX, y: r.minY), dx: len, dy: len)
+                corner(CGPoint(x: r.maxX, y: r.minY), dx: -len, dy: len)
+                corner(CGPoint(x: r.minX, y: r.maxY), dx: len, dy: -len)
+                corner(CGPoint(x: r.maxX, y: r.maxY), dx: -len, dy: -len)
+                let knobs = [
+                    CGPoint(x: r.minX, y: r.minY),
+                    CGPoint(x: r.maxX, y: r.minY),
+                    CGPoint(x: r.minX, y: r.maxY),
+                    CGPoint(x: r.maxX, y: r.maxY)
+                ]
+                for p in knobs {
+                    context.fill(Path(ellipseIn: CGRect(x: p.x - 9, y: p.y - 9, width: 18, height: 18)), with: .color(.white))
+                    context.fill(Path(ellipseIn: CGRect(x: p.x - 7, y: p.y - 7, width: 14, height: 14)), with: .color(Color(hex: "00AFA4")))
+                }
+            }
+        }
     }
 
     private func applyViewport(_ size: CGSize) {
@@ -1024,64 +1264,112 @@ struct ImageCropDialogView: View {
         }
     }
 
-    private func dragGesture(kind: CropDragKind) -> some Gesture {
-        DragGesture()
+    private var cropDragGesture: some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .local)
             .onChanged { value in
                 if activeDrag == nil {
+                    guard let kind = hitKind(at: value.startLocation) else { return }
                     activeDrag = kind
                     dragStartRect = cropRect
                     userAdjusted = true
                 }
-                guard activeDrag == kind else { return }
-                let dx = value.translation.width
-                let dy = value.translation.height
-                var rect = dragStartRect
-                switch kind {
-                case .move:
-                    rect.origin.x += dx
-                    rect.origin.y += dy
-                case .topLeft:
-                    rect.origin.x += dx
-                    rect.origin.y += dy
-                    rect.size.width -= dx
-                    rect.size.height -= dy
-                case .topRight:
-                    rect.origin.y += dy
-                    rect.size.width += dx
-                    rect.size.height -= dy
-                case .bottomLeft:
-                    rect.origin.x += dx
-                    rect.size.width -= dx
-                    rect.size.height += dy
-                case .bottomRight:
-                    rect.size.width += dx
-                    rect.size.height += dy
-                case .top:
-                    rect.origin.y += dy
-                    rect.size.height -= dy
-                case .bottom:
-                    rect.size.height += dy
-                case .left:
-                    rect.origin.x += dx
-                    rect.size.width -= dx
-                case .right:
-                    rect.size.width += dx
-                }
-                if rect.width >= 40, rect.height >= 40 {
-                    cropRect = rect.clamped(in: viewportSize)
-                }
+                guard let kind = activeDrag else { return }
+                applyDrag(kind: kind, dx: value.translation.width, dy: value.translation.height)
             }
             .onEnded { _ in activeDrag = nil }
+    }
+
+    private func hitKind(at point: CGPoint) -> CropDragKind? {
+        let r = cropRect
+        let corner: CGFloat = 28
+        let edge: CGFloat = 22
+        func near(_ a: CGPoint, _ b: CGPoint, _ d: CGFloat) -> Bool {
+            abs(a.x - b.x) <= d && abs(a.y - b.y) <= d
+        }
+        if near(point, CGPoint(x: r.minX, y: r.minY), corner) { return .topLeft }
+        if near(point, CGPoint(x: r.maxX, y: r.minY), corner) { return .topRight }
+        if near(point, CGPoint(x: r.minX, y: r.maxY), corner) { return .bottomLeft }
+        if near(point, CGPoint(x: r.maxX, y: r.maxY), corner) { return .bottomRight }
+        if abs(point.y - r.minY) <= edge && point.x >= r.minX && point.x <= r.maxX { return .top }
+        if abs(point.y - r.maxY) <= edge && point.x >= r.minX && point.x <= r.maxX { return .bottom }
+        if abs(point.x - r.minX) <= edge && point.y >= r.minY && point.y <= r.maxY { return .left }
+        if abs(point.x - r.maxX) <= edge && point.y >= r.minY && point.y <= r.maxY { return .right }
+        if r.insetBy(dx: 8, dy: 8).contains(point) { return .move }
+        return nil
+    }
+
+    private func applyDrag(kind: CropDragKind, dx: CGFloat, dy: CGFloat) {
+        var rect = dragStartRect
+        switch kind {
+        case .move:
+            rect.origin.x += dx
+            rect.origin.y += dy
+            cropRect = rect.clampedMove(in: viewportSize)
+            return
+        case .topLeft:
+            rect.origin.x += dx
+            rect.origin.y += dy
+            rect.size.width -= dx
+            rect.size.height -= dy
+        case .topRight:
+            rect.origin.y += dy
+            rect.size.width += dx
+            rect.size.height -= dy
+        case .bottomLeft:
+            rect.origin.x += dx
+            rect.size.width -= dx
+            rect.size.height += dy
+        case .bottomRight:
+            rect.size.width += dx
+            rect.size.height += dy
+        case .top:
+            rect.origin.y += dy
+            rect.size.height -= dy
+        case .bottom:
+            rect.size.height += dy
+        case .left:
+            rect.origin.x += dx
+            rect.size.width -= dx
+        case .right:
+            rect.size.width += dx
+        }
+        cropRect = rect.clampedResize(in: viewportSize)
     }
 }
 
 private extension CGRect {
-    func clamped(in bounds: CGSize) -> CGRect {
+    func clampedMove(in bounds: CGSize) -> CGRect {
         var r = self
         if r.minX < 0 { r.origin.x = 0 }
         if r.minY < 0 { r.origin.y = 0 }
-        if r.maxX > bounds.width { r.origin.x = bounds.width - r.width }
-        if r.maxY > bounds.height { r.origin.y = bounds.height - r.height }
+        if r.maxX > bounds.width { r.origin.x = max(0, bounds.width - r.width) }
+        if r.maxY > bounds.height { r.origin.y = max(0, bounds.height - r.height) }
+        return r
+    }
+
+    func clampedResize(in bounds: CGSize) -> CGRect {
+        var r = self
+        if r.size.width < 40 {
+            r.size.width = 40
+        }
+        if r.size.height < 40 {
+            r.size.height = 40
+        }
+        if r.minX < 0 {
+            r.size.width += r.origin.x
+            r.origin.x = 0
+        }
+        if r.minY < 0 {
+            r.size.height += r.origin.y
+            r.origin.y = 0
+        }
+        if r.maxX > bounds.width {
+            r.size.width = max(40, bounds.width - r.origin.x)
+        }
+        if r.maxY > bounds.height {
+            r.size.height = max(40, bounds.height - r.origin.y)
+        }
+        if r.size.width < 40 || r.size.height < 40 { return self }
         return r
     }
 }

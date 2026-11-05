@@ -16,9 +16,12 @@ struct StudentCertificationView: View {
     @State private var strongSubjects = ""
     @State private var weakSubjects = ""
     @State private var saving = false
+    @State private var loading = true
+    @State private var certified = false
     @State private var showLevelPicker = false
     @State private var toastMessage = ""
     @State private var showToast = false
+    @State private var shouldPopOnToast = false
 
     private let levelOptions = ["四级", "六级", "无"]
 
@@ -26,22 +29,43 @@ struct StudentCertificationView: View {
         VStack(spacing: 0) {
             navBar
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    formCard
-                    submitButton
-                        .padding(.top, 16)
-                        .padding(.bottom, 28)
+            Group {
+                if loading {
+                    Spacer(minLength: 0)
+                    ProgressView()
+                    Spacer(minLength: 0)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            formCard
+                            if certified {
+                                Text("认证信息已提交，不可再次修改")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(hex: "6B7280"))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(15)
+                                    .background(Color.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .padding(.top, 16)
+                                    .padding(.bottom, 28)
+                            } else {
+                                submitButton
+                                    .padding(.top, 16)
+                                    .padding(.bottom, 28)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                    }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
             }
             .background(Color(hex: "F5F5F5"))
         }
         .navigationBarHidden(true)
+        .onAppear { loadCertification() }
         .sheet(isPresented: $showLevelPicker) { levelPickerSheet }
         .alert("提示", isPresented: $showToast) {
-            Button("确定") { if toastMessage.contains("成功") { onBack() } }
+            Button("确定") { if shouldPopOnToast { onBack() } }
         } message: {
             Text(toastMessage)
         }
@@ -56,7 +80,7 @@ struct StudentCertificationView: View {
                     .frame(width: 44, height: 44)
             }
             Spacer()
-            Text("认证学员")
+            Text(certified ? "已认证学员" : "认证学员")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundColor(Color(hex: "2D3748"))
             Spacer()
@@ -105,7 +129,7 @@ struct StudentCertificationView: View {
         Group {
             sectionTitle("英语能力")
             pickerField(label: "英语等级", value: englishLevel.isEmpty ? "请选择英语等级" : englishLevel) {
-                showLevelPicker = true
+                if !certified { showLevelPicker = true }
             }
             certField(label: "英语等级考试成绩", text: $englishLevelScore, placeholder: "请输入成绩，无则填无")
         }
@@ -174,9 +198,10 @@ struct StudentCertificationView: View {
             TextField(placeholder, text: text)
                 .font(.system(size: 14))
                 .keyboardType(digitsOnly ? .numberPad : .default)
+                .disabled(certified)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
-                .background(Color(hex: "F9FAFB"))
+                .background(Color(hex: certified ? "F3F4F6" : "F9FAFB"))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .padding(.bottom, 15)
@@ -227,7 +252,7 @@ struct StudentCertificationView: View {
 
         saving = true
         Task {
-            let ok = await apiService.updateUserInfo(params: [
+            let result = await apiService.updateUserInfoDetailed(params: [
                 "parent_name": parentName.trimmingCharacters(in: .whitespaces),
                 "parent_phone": parentPhone.trimmingCharacters(in: .whitespaces),
                 "gaokao_source": examLocation.trimmingCharacters(in: .whitespaces),
@@ -241,9 +266,40 @@ struct StudentCertificationView: View {
             ])
             await MainActor.run {
                 saving = false
-                toastMessage = ok ? "认证提交成功" : "提交失败"
+                toastMessage = result.ok ? "认证提交成功" : result.message
+                shouldPopOnToast = result.ok
                 showToast = true
+                if result.ok { certified = true }
             }
         }
+    }
+
+    private func loadCertification() {
+        Task {
+            let data = await apiService.fetchUserInfoData()
+            await MainActor.run {
+                if let data {
+                    parentName = AcademicApi.stringValue(data["parent_name"])
+                    parentPhone = AcademicApi.stringValue(data["parent_phone"]).filter(\.isNumber)
+                    examLocation = AcademicApi.stringValue(data["gaokao_source"])
+                    totalScore = scoreText(data["gaokao_score"])
+                    mathScore = scoreText(data["gaokao_math_score"])
+                    englishScore = scoreText(data["gaokao_english_score"])
+                    englishLevel = AcademicApi.stringValue(data["english_level"])
+                    let enScore = AcademicApi.stringValue(data["english_score"])
+                    englishLevelScore = enScore == "无" ? "无" : scoreText(data["english_score"])
+                    strongSubjects = AcademicApi.stringValue(data["advantage_subjects"])
+                    weakSubjects = AcademicApi.stringValue(data["weak_subjects"])
+                    certified = !parentName.isEmpty && !parentPhone.isEmpty && !examLocation.isEmpty
+                }
+                loading = false
+            }
+        }
+    }
+
+    private func scoreText(_ raw: Any?) -> String {
+        let text = AcademicApi.stringValue(raw)
+        if text.isEmpty || text == "0" { return "" }
+        return text.filter { $0.isNumber || $0 == "." }
     }
 }

@@ -13,12 +13,14 @@
 		04A5FDDE2FDDD1F60028CE2E /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 04A5FDDD2FDDD1F60028CE2E /* Preview Assets.xcassets */; };
 		0DA44662861B8012F19A5884 /* GpaCalculatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F414839B7DBE59DBCA4C149 /* GpaCalculatorView.swift */; };
 		1F9042B581C0D4453B326419 /* MyAskListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D551456283418B76960687D4 /* MyAskListView.swift */; };
+		F1E2D3C40123456789000001 /* FeedbackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C40123456789000002 /* FeedbackView.swift */; };
 		37A64757A4B4B7A7235FD3F5 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04534896AD0D2BE81AB4E4E0 /* LoginView.swift */; };
 		505A4AE6BFBD24F30D4DB473 /* MyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 236B475994FE81C2CF355BAA /* MyView.swift */; };
 		57FC4F5593701486EB1A8B2F /* StudentInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87240749AD752A6050676E5 /* StudentInfoView.swift */; };
 		638648279C3F4CE21776769B /* AccountManageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A54FC78B68A842D541BE4D /* AccountManageView.swift */; };
 		8CF84D699F6DE8E4419A83E0 /* AiChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6452478AB169C5B132671EF3 /* AiChatView.swift */; };
 		B1C2D3E40123456789000001 /* AiCameraCaptureKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E40123456789000002 /* AiCameraCaptureKit.swift */; };
+		F1E2D3C40123456789000003 /* QaSubjectPickerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C40123456789000004 /* QaSubjectPickerViews.swift */; };
 		92A34BA4BBDC5A76A327BB3C /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A31547D7BEDC1647FBA3EB29 /* HomeView.swift */; };
 		9E294CA5BA4DA5875898DBEB /* ApiService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95784DA18BE660972D363AF4 /* ApiService.swift */; };
 		E4A1B2C3D4E5F67890000002 /* AcademicHomeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F67890000001 /* AcademicHomeService.swift */; };
@@ -30,6 +32,7 @@
 		E4A1B2C3D4E5F6789000001C /* GradeBacktrackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F6789000001B /* GradeBacktrackView.swift */; };
 		E4A1B2C3D4E5F6789000001E /* GpaAcademicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F6789000001D /* GpaAcademicView.swift */; };
 		E4A1B2C3D4E5F67890000020 /* QaHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F6789000001F /* QaHelpers.swift */; };
+		E4A1B2C3D4E5F67890000022 /* ReviewCheckinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A1B2C3D4E5F67890000021 /* ReviewCheckinView.swift */; };
 		A1B2C3D451111111100000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000001 /* AppDelegate.swift */; };
 		A1B2C3D451111111100000002 /* WechatLoginBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D441111111100000002 /* WechatLoginBridge.swift */; };
 		C1D2E3F40123456789000001 /* AppleSignInService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F40123456789000002 /* AppleSignInService.swift */; };
@@ -58,6 +61,8 @@
 		B2C3D4E50123456789000004 /* katex.min.css in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000004 /* katex.min.css */; };
 		B2C3D4E50123456789000005 /* katex.min.js in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000005 /* katex.min.js */; };
 		B2C3D4E50123456789000006 /* marked.min.js in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000006 /* marked.min.js */; };
+		B2C3D4E50123456789000007 /* qa-shell.html in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000007 /* qa-shell.html */; };
+		B2C3D4E50123456789000008 /* qa-render.js in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000008 /* qa-render.js */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -75,6 +80,7 @@
 		55494308B3625CB6AF1EB33A /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Models.swift; path = jimanman/Models/Models.swift; sourceTree = "<group>"; };
 		6452478AB169C5B132671EF3 /* AiChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AiChatView.swift; path = jimanman/Views/Chat/AiChatView.swift; sourceTree = "<group>"; };
 		B1C2D3E40123456789000002 /* AiCameraCaptureKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AiCameraCaptureKit.swift; path = jimanman/Views/Chat/AiCameraCaptureKit.swift; sourceTree = "<group>"; };
+		F1E2D3C40123456789000004 /* QaSubjectPickerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QaSubjectPickerViews.swift; path = jimanman/Views/Chat/QaSubjectPickerViews.swift; sourceTree = "<group>"; };
 		659B4259ACD751E1172799A7 /* VipAndCourseViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = VipAndCourseViews.swift; path = jimanman/Views/Profile/VipAndCourseViews.swift; sourceTree = "<group>"; };
 		7F414839B7DBE59DBCA4C149 /* GpaCalculatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GpaCalculatorView.swift; path = jimanman/Views/Gpa/GpaCalculatorView.swift; sourceTree = "<group>"; };
 		815B4BCA9CAA424E99943A61 /* RechargeAndOrdersViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RechargeAndOrdersViews.swift; path = jimanman/Views/Profile/RechargeAndOrdersViews.swift; sourceTree = "<group>"; };
@@ -85,6 +91,7 @@
 		E4A1B2C3D4E5F67890000015 /* AcademicApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AcademicApi.swift; path = jimanman/Services/AcademicApi.swift; sourceTree = "<group>"; };
 		E4A1B2C3D4E5F67890000017 /* AcademicChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AcademicChrome.swift; path = jimanman/Views/Academic/AcademicChrome.swift; sourceTree = "<group>"; };
 		E4A1B2C3D4E5F67890000019 /* SubjectRegisterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubjectRegisterView.swift; path = jimanman/Views/Academic/SubjectRegisterView.swift; sourceTree = "<group>"; };
+		E4A1B2C3D4E5F67890000021 /* ReviewCheckinView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ReviewCheckinView.swift; path = jimanman/Views/Academic/ReviewCheckinView.swift; sourceTree = "<group>"; };
 		E4A1B2C3D4E5F6789000001B /* GradeBacktrackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GradeBacktrackView.swift; path = jimanman/Views/Academic/GradeBacktrackView.swift; sourceTree = "<group>"; };
 		E4A1B2C3D4E5F6789000001D /* GpaAcademicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GpaAcademicView.swift; path = jimanman/Views/Academic/GpaAcademicView.swift; sourceTree = "<group>"; };
 		E4A1B2C3D4E5F6789000001F /* QaHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = QaHelpers.swift; path = jimanman/Services/QaHelpers.swift; sourceTree = "<group>"; };
@@ -106,6 +113,7 @@
 		C73142F7A08C798874B490C6 /* ColorExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ColorExtension.swift; path = jimanman/Utils/ColorExtension.swift; sourceTree = "<group>"; };
 		D2E3F4A40123456789000002 /* PresentationAnchor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PresentationAnchor.swift; path = jimanman/Utils/PresentationAnchor.swift; sourceTree = "<group>"; };
 		D551456283418B76960687D4 /* MyAskListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyAskListView.swift; path = jimanman/Views/Profile/MyAskListView.swift; sourceTree = "<group>"; };
+		F1E2D3C40123456789000002 /* FeedbackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = FeedbackView.swift; path = jimanman/Views/Profile/FeedbackView.swift; sourceTree = "<group>"; };
 		D87240749AD752A6050676E5 /* StudentInfoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StudentInfoView.swift; path = jimanman/Views/Profile/StudentInfoView.swift; sourceTree = "<group>"; };
 		B2C3D4E40123456789000001 /* AssessmentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssessmentStore.swift; path = jimanman/Services/AssessmentStore.swift; sourceTree = "<group>"; };
 		B2C3D4E40123456789000002 /* questions.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = questions.json; path = jimanman/questions.json; sourceTree = "<group>"; };
@@ -114,6 +122,8 @@
 		B2C3D4E40123456789000004 /* katex.min.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; name = katex.min.css; path = jimanman/math/katex.min.css; sourceTree = "<group>"; };
 		B2C3D4E40123456789000005 /* katex.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = katex.min.js; path = jimanman/math/katex.min.js; sourceTree = "<group>"; };
 		B2C3D4E40123456789000006 /* marked.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = marked.min.js; path = jimanman/math/marked.min.js; sourceTree = "<group>"; };
+		B2C3D4E40123456789000007 /* qa-shell.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = qa-shell.html; path = jimanman/math/qa-shell.html; sourceTree = "<group>"; };
+		B2C3D4E40123456789000008 /* qa-render.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = qa-render.js; path = jimanman/math/qa-render.js; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -159,12 +169,14 @@
 				A31547D7BEDC1647FBA3EB29 /* HomeView.swift */,
 				6452478AB169C5B132671EF3 /* AiChatView.swift */,
 				B1C2D3E40123456789000002 /* AiCameraCaptureKit.swift */,
+				F1E2D3C40123456789000004 /* QaSubjectPickerViews.swift */,
 				7F414839B7DBE59DBCA4C149 /* GpaCalculatorView.swift */,
 				AE2546C08B29F4C8B58A35CB /* AssessmentViews.swift */,
 				03A54FC78B68A842D541BE4D /* AccountManageView.swift */,
 				2CBE496CA6541D5229C8D144 /* ApplyCloseAccountView.swift */,
 				9BC94857986CB9DC28EE015C /* ConfirmCloseAccountView.swift */,
 				D551456283418B76960687D4 /* MyAskListView.swift */,
+				F1E2D3C40123456789000002 /* FeedbackView.swift */,
 				AAC1453BBEDD273D581186ED /* MyCourseWebView.swift */,
 				236B475994FE81C2CF355BAA /* MyView.swift */,
 				815B4BCA9CAA424E99943A61 /* RechargeAndOrdersViews.swift */,
@@ -179,6 +191,7 @@
 				E4A1B2C3D4E5F67890000015 /* AcademicApi.swift */,
 				E4A1B2C3D4E5F67890000017 /* AcademicChrome.swift */,
 				E4A1B2C3D4E5F67890000019 /* SubjectRegisterView.swift */,
+				E4A1B2C3D4E5F67890000021 /* ReviewCheckinView.swift */,
 				E4A1B2C3D4E5F6789000001B /* GradeBacktrackView.swift */,
 				E4A1B2C3D4E5F6789000001D /* GpaAcademicView.swift */,
 				E4A1B2C3D4E5F6789000001F /* QaHelpers.swift */,
@@ -192,6 +205,8 @@
 				B2C3D4E40123456789000004 /* katex.min.css */,
 				B2C3D4E40123456789000005 /* katex.min.js */,
 				B2C3D4E40123456789000006 /* marked.min.js */,
+				B2C3D4E40123456789000007 /* qa-shell.html */,
+				B2C3D4E40123456789000008 /* qa-render.js */,
 				A1B2C3D441111111100000010 /* Info.plist */,
 				A1B2C3D441111111100000003 /* WechatOpenSDK-XCFramework.xcframework */,
 				04757C912FDE3B780084D5AD /* Recovered References */,
@@ -289,6 +304,8 @@
 				B2C3D4E50123456789000004 /* katex.min.css in Resources */,
 				B2C3D4E50123456789000005 /* katex.min.js in Resources */,
 				B2C3D4E50123456789000006 /* marked.min.js in Resources */,
+				B2C3D4E50123456789000007 /* qa-shell.html in Resources */,
+				B2C3D4E50123456789000008 /* qa-render.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -308,12 +325,14 @@
 				92A34BA4BBDC5A76A327BB3C /* HomeView.swift in Sources */,
 				8CF84D699F6DE8E4419A83E0 /* AiChatView.swift in Sources */,
 				B1C2D3E40123456789000001 /* AiCameraCaptureKit.swift in Sources */,
+				F1E2D3C40123456789000003 /* QaSubjectPickerViews.swift in Sources */,
 				0DA44662861B8012F19A5884 /* GpaCalculatorView.swift in Sources */,
 				C20244BC8F9905DEDD999546 /* AssessmentViews.swift in Sources */,
 				638648279C3F4CE21776769B /* AccountManageView.swift in Sources */,
 				C2DB4E3BA8A8E4B5537F980A /* ApplyCloseAccountView.swift in Sources */,
 				FD064D6BB45D2AEBBF6DDB41 /* ConfirmCloseAccountView.swift in Sources */,
 				1F9042B581C0D4453B326419 /* MyAskListView.swift in Sources */,
+				F1E2D3C40123456789000001 /* FeedbackView.swift in Sources */,
 				E2C040D89554EBFDC2C9062D /* MyCourseWebView.swift in Sources */,
 				505A4AE6BFBD24F30D4DB473 /* MyView.swift in Sources */,
 				E6A34846A89412AAE1707DDD /* RechargeAndOrdersViews.swift in Sources */,
@@ -328,6 +347,7 @@
 				E4A1B2C3D4E5F67890000016 /* AcademicApi.swift in Sources */,
 				E4A1B2C3D4E5F67890000018 /* AcademicChrome.swift in Sources */,
 				E4A1B2C3D4E5F6789000001A /* SubjectRegisterView.swift in Sources */,
+				E4A1B2C3D4E5F67890000022 /* ReviewCheckinView.swift in Sources */,
 				E4A1B2C3D4E5F6789000001C /* GradeBacktrackView.swift in Sources */,
 				E4A1B2C3D4E5F6789000001E /* GpaAcademicView.swift in Sources */,
 				E4A1B2C3D4E5F67890000020 /* QaHelpers.swift in Sources */,
@@ -464,7 +484,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 46;
 				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
 				DEVELOPMENT_TEAM = QNC87AZURH;
 				ENABLE_PREVIEWS = YES;
@@ -517,7 +537,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 46;
 				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
 				DEVELOPMENT_TEAM = QNC87AZURH;
 				ENABLE_PREVIEWS = YES;
