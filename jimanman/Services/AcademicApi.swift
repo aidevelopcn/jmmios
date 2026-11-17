@@ -267,7 +267,7 @@ enum AcademicApi {
         return 0
     }
 
-    private static func parseMyCoursesPayload(_ json: [String: Any]) throws -> MyCoursesPayload {
+    static func parseMyCoursesPayload(_ json: [String: Any]) throws -> MyCoursesPayload {
         if jsonIntCode(json) == 401 { throw AcademicError("请先登录") }
         guard codeOK(json), let data = json["data"] as? [String: Any] else {
             throw AcademicError(msg(json, "加载失败"))
@@ -289,10 +289,7 @@ enum AcademicApi {
                     usedHours: doubleValue(item["used_hours"]),
                     leftHours: doubleValue(item["left_hours"]),
                     canRate: boolValue(item["can_rate"]),
-                    finished: boolValue(item["finished"])
-                        || stringValue(item["sheet_status"]) == "已结课",
-                    refunded: stringValue(item["sheet_status"]) == "学员退费",
-                    sheetStatus: stringValue(item["sheet_status"]),
+                    unallocated: boolValue(item["unallocated"]),
                     evaluation: evaluation.map {
                         MyCourseEvaluation(
                             rating1: doubleValue($0["rating1"]),
@@ -309,7 +306,8 @@ enum AcademicApi {
                         )
                     }
                 )
-            }
+            },
+            refunded: boolValue(data["refunded"])
         )
     }
 

@@ -17,6 +17,7 @@ struct MyCourseView: View {
     @State private var enrolled = MyCoursesCache.snapshot()?.enrolled ?? false
     @State private var loadReason = MyCoursesCache.snapshot()?.reason ?? ""
     @State private var courses = MyCoursesCache.snapshot()?.courses ?? []
+    @State private var refunded = MyCoursesCache.snapshot()?.refunded ?? false
     @State private var expanded: Set<String> = []
     @State private var busyRecordId: Int?
     @State private var reviewCourse: MyCourseItem?
@@ -89,15 +90,16 @@ struct MyCourseView: View {
     private var enrolledBody: some View {
         let total = courses.reduce(0) { $0 + $1.totalHours }
         let used = courses.reduce(0) { $0 + $1.usedHours }
-        let left = courses.reduce(0) { $0 + (($1.finished || $1.refunded) ? 0 : $1.leftHours) }
+        let left = courses.reduce(0) { $0 + $1.leftHours }
         let pct = total > 0 ? min(100, max(0, Int((used / total) * 100))) : 0
-        let studying = courses.contains { !$0.finished && !$0.refunded && $0.leftHours > 0 }
+        let courseCount = courses.filter { !$0.isUnallocatedHours }.count
+        let studying = courses.isEmpty || courses.contains { $0.leftHours > 0 }
         let pending: [(MyCourseItem, MyCourseRecord)] = courses.flatMap { course in
             course.records.filter(\.confirmable).map { (course, $0) }
         }
         return ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                hoursHero(count: courses.count, left: left, total: total, used: used, percent: pct, studying: studying)
+                hoursHero(count: courseCount, left: left, total: total, used: used, percent: pct, studying: studying)
                 ForEach(Array(pending.enumerated()), id: \.offset) { _, pair in
                     pendingCard(course: pair.0, record: pair.1)
                 }
@@ -105,7 +107,7 @@ struct MyCourseView: View {
                     Text("已报课程")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(AcademicPalette.ink)
-                    Text("\(courses.count)")
+                    Text("\(courseCount)")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(.white)
                         .padding(.horizontal, 7)
@@ -131,13 +133,9 @@ struct MyCourseView: View {
         }
     }
 
-    private func heroStatus(studying: Bool, courses: [MyCourseItem]) -> String {
+    private func heroStatus(studying: Bool) -> String {
+        if refunded { return "已退费" }
         if studying { return "在学中" }
-        if courses.contains(where: { $0.finished }) { return "已结课" }
-        if !courses.isEmpty && courses.allSatisfy({ $0.refunded }) { return "已退费" }
-        if courses.contains(where: { $0.refunded }) && !courses.contains(where: { !$0.refunded && $0.leftHours > 0 }) {
-            return "已退费"
-        }
         return "已结课"
     }
 
@@ -171,7 +169,7 @@ struct MyCourseView: View {
                         .padding(.bottom, 10)
                     HStack(spacing: 5) {
                         Circle().fill(Color(hex: "0A3D33")).frame(width: 6, height: 6)
-                        Text(heroStatus(studying: studying, courses: courses))
+                        Text(heroStatus(studying: studying))
                             .font(.system(size: 11.5, weight: .heavy))
                             .foregroundColor(Color(hex: "0A3D33"))
                     }
@@ -264,10 +262,8 @@ struct MyCourseView: View {
     }
 
     private func courseCard(_ course: MyCourseItem) -> some View {
-        let remaining = (course.finished || course.refunded) ? 0 : course.leftHours
-        let percent = course.finished
-            ? 100
-            : (course.totalHours > 0 ? min(100, max(0, Int((course.usedHours / course.totalHours) * 100))) : 0)
+        let remaining = course.leftHours
+        let percent = course.totalHours > 0 ? min(100, max(0, Int((course.usedHours / course.totalHours) * 100))) : 0
         let rawTeacher = course.teacherName.trimmingCharacters(in: .whitespacesAndNewlines)
         let teacherPending = rawTeacher.isEmpty || rawTeacher.hasPrefix("待")
         let teacher = rawTeacher.isEmpty ? "待排课" : rawTeacher
@@ -411,11 +407,7 @@ struct MyCourseView: View {
                 .background(AcademicPalette.hintBg)
                 .overlay(Capsule().stroke(AcademicPalette.hero.opacity(0.55), lineWidth: 1))
                 .clipShape(Capsule())
-            } else if course.refunded {
-                Text("学员已退费")
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "9AA3A8"))
-            } else if course.canRate || course.finished {
+            } else if course.canRate {
                 Text("课程已结课，分享你的体验")
                     .font(.system(size: 12))
                     .foregroundColor(Color(hex: "9AA3A8"))
@@ -688,6 +680,7 @@ struct MyCourseView: View {
                 enrolled = payload.enrolled
                 loadReason = payload.reason
                 courses = payload.courses
+                refunded = payload.refunded
                 loadError = nil
             case .failure(let error):
                 let message = error.localizedDescription
@@ -695,6 +688,7 @@ struct MyCourseView: View {
                     MyCoursesCache.clear()
                     enrolled = false
                     courses = []
+                    refunded = false
                     loadReason = ""
                     loadError = nil
                 } else if courses.isEmpty && !enrolled {

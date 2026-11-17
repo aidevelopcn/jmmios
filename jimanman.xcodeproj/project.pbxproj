@@ -63,6 +63,7 @@
 		B2C3D4E50123456789000006 /* marked.min.js in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000006 /* marked.min.js */; };
 		B2C3D4E50123456789000007 /* qa-shell.html in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000007 /* qa-shell.html */; };
 		B2C3D4E50123456789000008 /* qa-render.js in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000008 /* qa-render.js */; };
+		B2C3D4E50123456789000009 /* vip_agreement.txt in Resources */ = {isa = PBXBuildFile; fileRef = B2C3D4E40123456789000009 /* vip_agreement.txt */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -124,6 +125,7 @@
 		B2C3D4E40123456789000006 /* marked.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = marked.min.js; path = jimanman/math/marked.min.js; sourceTree = "<group>"; };
 		B2C3D4E40123456789000007 /* qa-shell.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = qa-shell.html; path = jimanman/math/qa-shell.html; sourceTree = "<group>"; };
 		B2C3D4E40123456789000008 /* qa-render.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = qa-render.js; path = jimanman/math/qa-render.js; sourceTree = "<group>"; };
+		B2C3D4E40123456789000009 /* vip_agreement.txt */ = {isa = PBXFileReference; lastKnownFileType = text; name = vip_agreement.txt; path = jimanman/vip_agreement.txt; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -207,6 +209,7 @@
 				B2C3D4E40123456789000006 /* marked.min.js */,
 				B2C3D4E40123456789000007 /* qa-shell.html */,
 				B2C3D4E40123456789000008 /* qa-render.js */,
+				B2C3D4E40123456789000009 /* vip_agreement.txt */,
 				A1B2C3D441111111100000010 /* Info.plist */,
 				A1B2C3D441111111100000003 /* WechatOpenSDK-XCFramework.xcframework */,
 				04757C912FDE3B780084D5AD /* Recovered References */,
@@ -306,6 +309,7 @@
 				B2C3D4E50123456789000006 /* marked.min.js in Resources */,
 				B2C3D4E50123456789000007 /* qa-shell.html in Resources */,
 				B2C3D4E50123456789000008 /* qa-render.js in Resources */,
+				B2C3D4E50123456789000009 /* vip_agreement.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -484,7 +488,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 50;
 				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
 				DEVELOPMENT_TEAM = QNC87AZURH;
 				ENABLE_PREVIEWS = YES;
@@ -537,7 +541,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = jimanman/jimanman.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 46;
+				CURRENT_PROJECT_VERSION = 50;
 				DEVELOPMENT_ASSET_PATHS = "\"jimanman/Preview Content\"";
 				DEVELOPMENT_TEAM = QNC87AZURH;
 				ENABLE_PREVIEWS = YES;

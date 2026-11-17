@@ -37,6 +37,42 @@ class ApiService: ObservableObject {
             }
         }
     }
+
+    /// 后端鉴权失败文案（对齐鸿蒙 QaScreen.isAuthFailure）
+    static func isAuthFailureMessage(_ message: String) -> Bool {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        return text.contains("token不能为空")
+            || text.contains("token失效")
+            || text.contains("token已过期")
+            || text.contains("未登录")
+            || text.contains("用户未登录")
+            || text.contains("账号不存在或已删除")
+            || text.contains("身份验证未通过")
+    }
+
+    static func isAuthFailure(httpStatus: Int = 0, code: Int? = nil, message: String = "") -> Bool {
+        if httpStatus == 401 || code == 401 { return true }
+        return isAuthFailureMessage(message)
+    }
+
+    /// token 失效后清本地登录态，再由界面跳登录页
+    @MainActor
+    func clearSessionForReLogin() {
+        token = nil
+    }
+
+    enum StreamChatResult {
+        case success
+        case authExpired
+        case cancelled
+    }
+
+    enum ConversationListResult {
+        case success([ConversationItem])
+        case authExpired
+        case failure
+    }
     
     /// 通用请求方法
     private func request(
@@ -319,18 +355,22 @@ class ApiService: ObservableObject {
     }
 
     /// POST /api/user/sendVerifyCode
-    func sendVerifyCode(phone: String, type: String, countryCode: String = "86") async -> (success: Bool, message: String) {
+    /// displayCode：国际号码无法收国内短信时，服务端把验证码放在 data.verify_code 给页面展示。
+    func sendVerifyCode(phone: String, type: String, countryCode: String = "86") async -> (success: Bool, message: String, displayCode: String) {
         guard let json = await postForm(url: "\(baseURL)/api/user/sendVerifyCode", params: [
             "phone": phone,
             "type": type,
             "country_code": countryCode
         ]), let statusCode = jsonIntValue(json["code"]) else {
-            return (false, "网络错误，请稍后重试")
+            return (false, "网络错误，请稍后重试", "")
         }
         if statusCode == 200 {
-            return (true, json["msg"] as? String ?? "验证码已发送")
+            let data = json["data"] as? [String: Any] ?? [:]
+            let display = jsonStringValue(data["verify_code"], default: "")
+            let digits = String(display.filter(\.isNumber).prefix(6))
+            return (true, json["msg"] as? String ?? "验证码已发送", digits.count == 6 ? digits : "")
         }
-        return (false, json["msg"] as? String ?? "发送失败")
+        return (false, json["msg"] as? String ?? "发送失败", "")
     }
 
     /// POST /api/user/phoneLogin
@@ -552,11 +592,32 @@ class ApiService: ObservableObject {
     
     // MARK: - 上传文件
     /// POST /api/index/upload
-    func uploadFile(imageData: Data, fileName: String, mimeType: String) async -> String? {
-        await uploadFileMeta(imageData: imageData, fileName: fileName, mimeType: mimeType)?.url
+    enum UploadFileResult {
+        case success(String)
+        case authExpired
+        case failure
     }
 
+    func uploadFile(imageData: Data, fileName: String, mimeType: String) async -> String? {
+        if case .success(let url) = await uploadFileResult(imageData: imageData, fileName: fileName, mimeType: mimeType) {
+            return url
+        }
+        return nil
+    }
+
+    func uploadFileResult(imageData: Data, fileName: String, mimeType: String) async -> UploadFileResult {
+        guard let meta = await uploadFileMeta(imageData: imageData, fileName: fileName, mimeType: mimeType) else {
+            // uploadFileMeta 在鉴权失败时会把 lastUploadAuthExpired 置位
+            return lastUploadAuthExpired ? .authExpired : .failure
+        }
+        return .success(meta.url)
+    }
+
+    /// 最近一次上传是否因 token 失效失败（供答疑发送链路使用）
+    private(set) var lastUploadAuthExpired = false
+
     func uploadFileMeta(imageData: Data, fileName: String, mimeType: String) async -> UploadedImageMeta? {
+        lastUploadAuthExpired = false
         let boundary = "----JMMBoundary\(Int(Date().timeIntervalSince1970 * 1000))"
         var body = Data()
         
@@ -569,8 +630,16 @@ class ApiService: ObservableObject {
         guard let json = await request(url: "\(baseURL)/api/index/upload", method: "POST",
                                        headers: ["Content-Type": "multipart/form-data; boundary=\(boundary)"],
                                        body: body,
-                                       timeoutInterval: 120),
-              let code = json["code"] as? Int, code == 200,
+                                       timeoutInterval: 120) else { return nil }
+        let code = jsonIntValue(json["code"])
+        let msg = jsonStringValue(json["msg"], default: "").isEmpty
+            ? jsonStringValue(json["message"], default: "")
+            : jsonStringValue(json["msg"], default: "")
+        if Self.isAuthFailure(code: code, message: msg) {
+            lastUploadAuthExpired = true
+            return nil
+        }
+        guard let code, code == 200,
               let data = json["data"] as? [String: Any] else { return nil }
         let url = data["filepath"] as? String ?? ""
         guard !url.isEmpty else { return nil }
@@ -609,12 +678,16 @@ class ApiService: ObservableObject {
     
     // MARK: - 创建VIP订单
     /// POST /api/vip_order/order_create
-    func createVipOrder(goodsId: Int) async -> WechatPayParams? {
+    func createVipOrder(goodsId: Int) async -> (params: WechatPayParams?, error: String) {
         guard let json = await postForm(url: "\(baseURL)/api/vip_order/order_create", params: [
             "goods_id": String(goodsId),
             "platform": "app-plus"
-        ]), let code = json["code"] as? Int, code == 200 else { return nil }
-        
+        ]) else { return (nil, "下单失败，请稍后重试") }
+        let code = json["code"] as? Int ?? 0
+        if code != 200 {
+            let msg = (json["msg"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return (nil, msg.isEmpty ? "下单失败" : msg)
+        }
         let payParams = (json["data"] as? [String: Any])?["pay_params"] as? [String: Any] ?? [:]
         guard let appId = payParams["appid"] as? String ?? payParams["appId"] as? String,
               let partnerId = payParams["partnerid"] as? String ?? payParams["partnerId"] as? String,
@@ -622,13 +695,13 @@ class ApiService: ObservableObject {
               let nonceStr = payParams["noncestr"] as? String ?? payParams["nonceStr"] as? String,
               let timeStamp = payParams["timestamp"] as? String ?? payParams["timeStamp"] as? String,
               let sign = payParams["sign"] as? String ?? payParams["paySign"] as? String else {
-            return nil
+            return (nil, "支付参数不完整")
         }
-        return WechatPayParams(
+        return (WechatPayParams(
             appId: appId, partnerId: partnerId, prepayId: prepayId,
             nonceStr: nonceStr, timeStamp: timeStamp, sign: sign,
             packageValue: payParams["package"] as? String ?? "Sign=WXPay"
-        )
+        ), "")
     }
     
     // MARK: - 订单列表
@@ -808,6 +881,7 @@ class ApiService: ObservableObject {
     }
     
     // MARK: - AI对话 - 流式请求（对齐 Android cozeStream）
+    @discardableResult
     func streamChat(
         token: String,
         prompt: String,
@@ -821,8 +895,8 @@ class ApiService: ObservableObject {
         onSubject: @escaping @MainActor (String) -> Void = { _ in },
         onNewSubject: @escaping @MainActor (String) -> Void = { _ in },
         onChunk: @escaping @MainActor (String) -> Void
-    ) async {
-        guard let url = URL(string: "\(baseURL)/api/cozeStream/chat") else { return }
+    ) async -> StreamChatResult {
+        guard let url = URL(string: "\(baseURL)/api/cozeStream/chat") else { return .success }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -850,7 +924,6 @@ class ApiService: ObservableObject {
         var lastFlush = Date.distantPast
         var receivedContentLength = 0
         var lastEvent = ""
-        var statusCode = 0
 
         func flushPending(force: Bool = false) async {
             guard !pending.isEmpty else { return }
@@ -932,15 +1005,31 @@ class ApiService: ObservableObject {
             client.cancel()
         }
 
-        if Task.isCancelled { return }
+        if Task.isCancelled { return .cancelled }
         await flushPending(force: true)
-        statusCode = outcome.status
+        let statusCode = outcome.status
         if let error = outcome.error, (error as NSError).code == NSURLErrorCancelled {
-            return
+            return .cancelled
         }
+
+        // Auth 中间件常以 HTTP 200 + {"code":401,"msg":"token失效"} 返回，不一定是 SSE
+        if Self.isAuthFailure(
+            httpStatus: statusCode,
+            code: parseAuthCode(from: outcome.rawPreview),
+            message: parseAuthMessage(from: outcome.rawPreview)
+        ) {
+            return .authExpired
+        }
+
         if receivedContentLength == 0 {
+            let parsed = parseChatErrorText(outcome.rawPreview, status: statusCode)
+            if Self.isAuthFailureMessage(parsed) {
+                return .authExpired
+            }
             let fallback: String
-            if outcome.error != nil {
+            if !parsed.isEmpty {
+                fallback = parsed
+            } else if outcome.error != nil {
                 fallback = "未收到回复，请确认网络正常或稍后重试"
             } else if (200...299).contains(statusCode) {
                 fallback = "答疑服务已连接，但没有返回内容，请再试一次"
@@ -951,6 +1040,57 @@ class ApiService: ObservableObject {
             }
             await MainActor.run { onChunk(fallback) }
         }
+        return .success
+    }
+
+    private func parseAuthCode(from raw: String) -> Int? {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty,
+              let data = text.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return jsonIntValue(obj["code"])
+    }
+
+    private func parseAuthMessage(from raw: String) -> String {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return "" }
+        if let data = text.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let msg = jsonStringValue(obj["msg"], default: "").isEmpty
+                ? jsonStringValue(obj["message"], default: "")
+                : jsonStringValue(obj["msg"], default: "")
+            if !msg.isEmpty { return msg }
+        }
+        return text
+    }
+
+    private func parseChatErrorText(_ raw: String, status: Int) -> String {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty {
+            return (200...299).contains(status) ? "" : "答疑服务异常(\(status))，请稍后重试"
+        }
+        if text.hasPrefix("<") { return "答疑服务异常，请稍后重试" }
+        if let data = text.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let msg = jsonStringValue(obj["msg"], default: "").isEmpty
+                ? jsonStringValue(obj["message"], default: "")
+                : jsonStringValue(obj["msg"], default: "")
+            if !msg.isEmpty { return msg }
+        }
+        if let dataLine = text.split(separator: "\n").map(String.init).first(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("data:") }) {
+            let jsonStr = String(dataLine.trimmingCharacters(in: .whitespaces).dropFirst(5)).trimmingCharacters(in: .whitespaces)
+            if let data = jsonStr.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let msg = jsonStringValue((obj["content"] as? [String: Any])?["answer"], default: "").isEmpty
+                    ? jsonStringValue(obj["msg"], default: "")
+                    : jsonStringValue((obj["content"] as? [String: Any])?["answer"], default: "")
+                if !msg.isEmpty { return msg }
+            }
+        }
+        if text.localizedCaseInsensitiveContains("Fatal error") || text.localizedCaseInsensitiveContains("Parse error") {
+            return "答疑服务异常，请稍后重试"
+        }
+        return (200...299).contains(status) ? "" : "答疑服务异常(\(status))，请稍后重试"
     }
 
     private func streamFlagTrue(_ raw: Any?) -> Bool {
@@ -1005,10 +1145,26 @@ class ApiService: ObservableObject {
 
     // MARK: - 会话历史（对齐 Android cozeStream）
     func fetchConversationList() async -> [ConversationItem] {
-        guard let json = await request(url: "\(baseURL)/api/cozeStream/conversationList"),
-              let code = jsonIntValue(json["code"]), code == 200,
-              let arr = json["data"] as? [[String: Any]] else { return [] }
-        return arr.compactMap { item in
+        if case .success(let items) = await fetchConversationListResult() {
+            return items
+        }
+        return []
+    }
+
+    func fetchConversationListResult() async -> ConversationListResult {
+        guard let json = await request(url: "\(baseURL)/api/cozeStream/conversationList") else {
+            return .failure
+        }
+        let code = jsonIntValue(json["code"])
+        let msg = jsonStringValue(json["msg"], default: "").isEmpty
+            ? jsonStringValue(json["message"], default: "")
+            : jsonStringValue(json["msg"], default: "")
+        if Self.isAuthFailure(code: code, message: msg) {
+            return .authExpired
+        }
+        guard let code, code == 200,
+              let arr = json["data"] as? [[String: Any]] else { return .failure }
+        let items = arr.compactMap { item -> ConversationItem? in
             guard let id = item["id"] as? String ?? (item["id"] as? NSNumber).map({ $0.stringValue }), !id.isEmpty else { return nil }
             let title = item["title"] as? String ?? ""
             let subject = jsonStringValue(item["subjectName"], default: "").isEmpty
@@ -1046,6 +1202,7 @@ class ApiService: ObservableObject {
                 hasImage: hasImage
             )
         }
+        return .success(items)
     }
 
     func fetchConversationDetail(conversationId: String) async -> ConversationDetailResult {
@@ -1383,6 +1540,8 @@ private final class SSEByteClient: NSObject, URLSessionDataDelegate {
     private var finishedError: Error?
     private var lineBox: AsyncStream<String>.Continuation?
     private var finished = false
+    /// 保留响应尾部，零正文时识别 Auth JSON（token失效）或 HTML 报错页
+    private var rawPreview = ""
 
     override init() {
         super.init()
@@ -1397,7 +1556,7 @@ private final class SSEByteClient: NSObject, URLSessionDataDelegate {
         session = URLSession(configuration: config, delegate: self, delegateQueue: queue)
     }
 
-    func start(_ request: URLRequest, onLine: @escaping (String) async -> Void) async -> (status: Int, error: Error?) {
+    func start(_ request: URLRequest, onLine: @escaping (String) async -> Void) async -> (status: Int, error: Error?, rawPreview: String) {
         let lines = AsyncStream<String> { continuation in
             self.lineBox = continuation
             let task = self.session.dataTask(with: request)
@@ -1411,7 +1570,7 @@ private final class SSEByteClient: NSObject, URLSessionDataDelegate {
             }
             await onLine(line)
         }
-        return (statusCode, finishedError)
+        return (statusCode, finishedError, rawPreview)
     }
 
     func cancel() {
@@ -1428,12 +1587,23 @@ private final class SSEByteClient: NSObject, URLSessionDataDelegate {
         session.finishTasksAndInvalidate()
     }
 
+    private func appendRawPreview(_ text: String) {
+        guard !text.isEmpty else { return }
+        rawPreview += text
+        if rawPreview.count > 2000 {
+            rawPreview = String(rawPreview.suffix(2000))
+        }
+    }
+
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
         completionHandler(.allow)
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        if let text = String(data: data, encoding: .utf8) {
+            appendRawPreview(text)
+        }
         buffer.append(data)
         let newline = Data([0x0A])
         while let range = buffer.range(of: newline) {

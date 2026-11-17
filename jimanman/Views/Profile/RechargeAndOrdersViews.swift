@@ -1,43 +1,30 @@
 import SwiftUI
 
-// MARK: - 储值页面（对齐 Android RechargeScreen）
+// MARK: - 开通会员（对齐 Android RechargeScreen）
 struct RechargeView: View {
     let onBack: () -> Void
 
+    private let vipPrimary = Color(hex: "00AFA4")
+    private let vipInk = Color(hex: "17181A")
+    private let vipCardBorder = Color(hex: "E5E7EB")
+
     @State private var goodsList: [VipGoods] = []
+    @State private var selectedIndex = 0
     @State private var loading = true
     @State private var placingOrder = false
+    @State private var agreed = false
+    @State private var showAgreement = false
     @State private var showPayError = false
     @State private var payErrorMessage = ""
     @State private var showPayResult = false
     @State private var payResultMessage = ""
 
     var body: some View {
-        ProfileScreenScaffold(background: Color(hex: "EEEEEE")) {
-            VStack(spacing: 0) {
-                ProfileSimpleTopBar(title: "储值", onBack: onBack)
-
-                if loading {
-                    Spacer(minLength: 0)
-                    ProgressView()
-                    Spacer(minLength: 0)
-                } else if goodsList.isEmpty {
-                    Spacer(minLength: 0)
-                    Text("暂无商品")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "999999"))
-                    Spacer(minLength: 0)
-                } else {
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 8) {
-                            ForEach(goodsList, id: \.id) { item in
-                                goodsCard(item: item)
-                            }
-                        }
-                        .padding(12)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+        Group {
+            if showAgreement {
+                VipAgreementView(onBack: { showAgreement = false })
+            } else {
+                rechargeBody
             }
         }
         .alert("提示", isPresented: $showPayError) { Button("确定") {} } message: { Text(payErrorMessage) }
@@ -45,57 +32,147 @@ struct RechargeView: View {
         .onAppear { loadGoods() }
     }
 
-    private func goodsCard(item: VipGoods) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(item.name)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(Color(hex: "111111"))
+    private var rechargeBody: some View {
+        ProfileScreenScaffold(background: Color(hex: "F5F7FA")) {
+            VStack(spacing: 0) {
+                ProfileSimpleTopBar(title: "开通会员", onBack: onBack, barBackground: Color.clear)
 
-            if !item.tip.isEmpty {
-                Text("（\(item.tip)）")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "707070"))
-            }
+                if loading {
+                    Spacer(minLength: 0)
+                    ProgressView().tint(vipPrimary)
+                    Spacer(minLength: 0)
+                } else if goodsList.isEmpty {
+                    Spacer(minLength: 0)
+                    Text("暂无可购买的套餐")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(hex: "6B7280"))
+                    Spacer(minLength: 0)
+                } else {
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(spacing: 10) {
+                            ForEach(Array(goodsList.enumerated()), id: \.element.id) { index, item in
+                                goodsCard(item: item, selected: index == selectedIndex)
+                                    .onTapGesture { selectedIndex = index }
+                            }
+                            Text("购买后立即生效。支付由微信支付提供，退款规则见《绩满满会员服务协议》。")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color(hex: "94A3B8"))
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 4)
+                                .padding(.bottom, 4)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                        .padding(.bottom, 14)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if !item.desc.isEmpty {
-                Text(item.desc)
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "707070"))
-            }
-
-            Spacer().frame(height: 8)
-
-            HStack(alignment: .center, spacing: 8) {
-                Text("特惠 ¥\(item.price)")
-                    .font(.system(size: 11))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(hex: "00D7CD")))
-
-                if (Double(item.oldPrice) ?? 0) > (Double(item.price) ?? 0) {
-                    Text("原价 ¥\(item.oldPrice)")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(hex: "999999"))
+                    VStack(spacing: 10) {
+                        agreementRow
+                        Button(action: tapPay) {
+                            HStack(spacing: 8) {
+                                if placingOrder {
+                                    ProgressView().tint(.white)
+                                }
+                                Text(placingOrder ? "正在唤起微信支付…" : "立即开通")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(.white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 46)
+                            .background(vipPrimary.opacity(placingOrder ? 0.45 : 1))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(placingOrder)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
+                    .background(Color.white)
                 }
-
-                Spacer(minLength: 0)
-
-                Button(action: { placeOrder(item: item) }) {
-                    Text(placingOrder ? "下单中" : "立即开通")
-                        .font(.system(size: 12))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background(RoundedRectangle(cornerRadius: 4).fill(Color(hex: "F59E0B")))
-                }
-                .buttonStyle(.plain)
-                .disabled(placingOrder)
             }
         }
-        .padding(12)
+    }
+
+    private var agreementRow: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Button(action: { agreed.toggle() }) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(agreed ? vipPrimary : Color.white)
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(agreed ? vipPrimary : Color(hex: "D0D5DD"), lineWidth: 1)
+                    if agreed {
+                        Text("✓")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 0) {
+                Button("我已阅读并同意") { agreed.toggle() }
+                    .font(.system(size: 11.5))
+                    .foregroundColor(Color(hex: "4B5563"))
+                    .buttonStyle(.plain)
+                Button("《绩满满会员服务协议》") { showAgreement = true }
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundColor(vipPrimary)
+                    .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func goodsCard(item: VipGoods, selected: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(item.name)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(vipInk)
+                    if !item.tip.isEmpty {
+                        Text(item.tip)
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(hex: "0F766E"))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(hex: "E6F9F8"))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+                if !item.desc.isEmpty {
+                    Text(item.desc)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: "6B7280"))
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("¥\(item.price)")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(vipPrimary)
+                if (Double(item.oldPrice) ?? 0) > (Double(item.price) ?? 0) {
+                    Text("¥\(item.oldPrice)")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "94A3B8"))
+                        .strikethrough()
+                }
+            }
+        }
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white))
+        .background(Color.white)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(selected ? vipPrimary : vipCardBorder, lineWidth: selected ? 1.5 : 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func loadGoods() {
@@ -104,44 +181,56 @@ struct RechargeView: View {
             let list = await ApiService.shared.fetchVipGoodsList()
             await MainActor.run {
                 goodsList = list
+                if selectedIndex >= list.count { selectedIndex = 0 }
                 loading = false
             }
         }
     }
 
-    private func placeOrder(item: VipGoods) {
+    private func tapPay() {
+        guard !placingOrder else { return }
+        guard agreed else {
+            payErrorMessage = "请先阅读并同意《绩满满会员服务协议》"
+            showPayError = true
+            return
+        }
         guard let token = ApiService.shared.token, !token.isEmpty else {
             payErrorMessage = "请先登录"
             showPayError = true
             return
         }
+        guard goodsList.indices.contains(selectedIndex) else { return }
+        placeOrder(item: goodsList[selectedIndex])
+    }
 
+    private func placeOrder(item: VipGoods) {
         Task {
             await MainActor.run { placingOrder = true }
-            if let params = await ApiService.shared.createVipOrder(goodsId: item.id) {
-                await MainActor.run { placingOrder = false }
-                let started = WechatLoginBridge.startPay(params: params) { errCode, errMsg in
-                    Task { @MainActor in
-                        if errCode == 0 {
-                            payResultMessage = "支付成功"
-                        } else if errCode == -2 {
-                            payResultMessage = "支付已取消"
-                        } else {
-                            payResultMessage = errMsg.isEmpty ? "支付失败" : errMsg
+            let result = await ApiService.shared.createVipOrder(goodsId: item.id)
+            await MainActor.run {
+                placingOrder = false
+                if let params = result.params {
+                    let started = WechatLoginBridge.startPay(params: params) { errCode, errMsg in
+                        Task { @MainActor in
+                            if errCode == 0 {
+                                payResultMessage = "支付成功"
+                            } else if errCode == -2 {
+                                payResultMessage = "支付已取消"
+                            } else {
+                                payResultMessage = errMsg.isEmpty ? "支付失败" : errMsg
+                            }
+                            showPayResult = true
                         }
-                        showPayResult = true
                     }
-                }
-                if !started {
-                    payErrorMessage = "无法调起微信支付"
+                    if !started {
+                        payErrorMessage = "无法调起微信支付"
+                        showPayError = true
+                    }
+                } else {
+                    payErrorMessage = result.error.isEmpty ? "下单失败" : result.error
                     showPayError = true
                 }
-                return
-            } else {
-                payErrorMessage = "下单失败"
-                showPayError = true
             }
-            await MainActor.run { placingOrder = false }
         }
     }
 }

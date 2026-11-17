@@ -445,11 +445,14 @@ struct MyCourseItem: Identifiable {
     let usedHours: Double
     let leftHours: Double
     let canRate: Bool
-    let finished: Bool
-    let refunded: Bool
-    let sheetStatus: String
+    /// 报名科目里的系统保留科目「未分配课时」：排在所有科目最后面，不计入课程门数，但课时仍计入顶部汇总。
+    let unallocated: Bool
     let evaluation: MyCourseEvaluation?
     let records: [MyCourseRecord]
+
+    var isUnallocatedHours: Bool {
+        unallocated || courseNo.hasPrefix("enroll-subject:未分配课时")
+    }
 }
 
 struct MyCoursesPayload {
@@ -457,6 +460,8 @@ struct MyCoursesPayload {
     let reason: String
     let advisorName: String
     let courses: [MyCourseItem]
+    /// 报名已退费（服务状态「已退款」，历史数据「已退费」）。退费后剩余课时是 0，顶部状态显示「已退费」。
+    let refunded: Bool
 }
 
 enum MyCoursesCache {
@@ -474,7 +479,7 @@ enum MyCoursesCache {
               let raw = UserDefaults.standard.string(forKey: jsonKey),
               let data = raw.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let payload = try? parseDisk(json) else { return nil }
+              let payload = try? AcademicApi.parseMyCoursesPayload(json) else { return nil }
         memory = payload
         owner = token
         return payload
@@ -491,6 +496,7 @@ enum MyCoursesCache {
                 "enrolled": payload.enrolled,
                 "reason": payload.reason,
                 "advisor_name": payload.advisorName,
+                "refunded": payload.refunded,
                 "courses": payload.courses.map { course -> [String: Any] in
                     [
                         "course_no": course.courseNo,
@@ -501,8 +507,7 @@ enum MyCoursesCache {
                         "used_hours": course.usedHours,
                         "left_hours": course.leftHours,
                         "can_rate": course.canRate,
-                        "finished": course.finished,
-                        "sheet_status": course.sheetStatus,
+                        "unallocated": course.unallocated,
                         "evaluation": course.evaluation.map { ["rating1": $0.rating1, "rating2": $0.rating2] } as Any,
                         "records": course.records.map {
                             ["id": $0.id, "date": $0.date, "hours": $0.hours, "status": $0.status, "confirmable": $0.confirmable]
@@ -525,46 +530,4 @@ enum MyCoursesCache {
         UserDefaults.standard.removeObject(forKey: ownerKey)
     }
 
-    private static func parseDisk(_ json: [String: Any]) throws -> MyCoursesPayload {
-        guard let data = json["data"] as? [String: Any] else { throw AcademicError("加载失败") }
-        let list = data["courses"] as? [[String: Any]] ?? []
-        return MyCoursesPayload(
-            enrolled: AcademicApi.boolValue(data["enrolled"]),
-            reason: AcademicApi.stringValue(data["reason"]),
-            advisorName: AcademicApi.stringValue(data["advisor_name"]),
-            courses: list.map { item in
-                let records = item["records"] as? [[String: Any]] ?? []
-                let evaluation = item["evaluation"] as? [String: Any]
-                return MyCourseItem(
-                    courseNo: AcademicApi.stringValue(item["course_no"]),
-                    name: AcademicApi.stringValue(item["name"]),
-                    teacherName: AcademicApi.stringValue(item["teacher_name"]),
-                    advisorName: AcademicApi.stringValue(item["advisor_name"]),
-                    totalHours: AcademicApi.doubleValue(item["total_hours"]),
-                    usedHours: AcademicApi.doubleValue(item["used_hours"]),
-                    leftHours: AcademicApi.doubleValue(item["left_hours"]),
-                    canRate: AcademicApi.boolValue(item["can_rate"]),
-                    finished: AcademicApi.boolValue(item["finished"])
-                        || AcademicApi.stringValue(item["sheet_status"]) == "已结课",
-                    refunded: AcademicApi.stringValue(item["sheet_status"]) == "学员退费",
-                    sheetStatus: AcademicApi.stringValue(item["sheet_status"]),
-                    evaluation: evaluation.map {
-                        MyCourseEvaluation(
-                            rating1: AcademicApi.doubleValue($0["rating1"]),
-                            rating2: AcademicApi.doubleValue($0["rating2"])
-                        )
-                    },
-                    records: records.map {
-                        MyCourseRecord(
-                            id: AcademicApi.intValue($0["id"]),
-                            date: AcademicApi.stringValue($0["date"]),
-                            hours: AcademicApi.doubleValue($0["hours"]),
-                            status: AcademicApi.stringValue($0["status"]),
-                            confirmable: AcademicApi.boolValue($0["confirmable"])
-                        )
-                    }
-                )
-            }
-        )
-    }
 }

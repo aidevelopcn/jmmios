@@ -746,8 +746,14 @@ struct AiChatView: View {
                 agentsLoading = false
             }
             if conversationList.isEmpty {
-                let list = await apiService.fetchConversationList()
-                await MainActor.run { conversationList = list }
+                let result = await apiService.fetchConversationListResult()
+                await MainActor.run {
+                    if case .success(let list) = result {
+                        conversationList = list
+                    } else if case .authExpired = result {
+                        handleAuthExpired()
+                    }
+                }
             }
         }
     }
@@ -761,15 +767,43 @@ struct AiChatView: View {
         showHistory = true
         loadConversationList()
     }
+
+    /// token 失效：清本地登录态并跳登录页（对齐鸿蒙 QaScreen.needLogin）
+    @MainActor
+    private func handleAuthExpired(closeHistory: Bool = true) {
+        streamTask?.cancel()
+        streamTask = nil
+        isLoading = false
+        uploadingImage = false
+        loadingText = "正在思考"
+        if let id = activeStreamMessageId {
+            messages.removeAll { $0.id == id }
+            activeStreamMessageId = nil
+            activeStreamContent = ""
+        }
+        if closeHistory {
+            showHistory = false
+            historyLoading = false
+        }
+        apiService.clearSessionForReLogin()
+        onNeedLogin()
+    }
     
     private func loadConversationList() {
         guard let token = apiService.token, !token.isEmpty else { return }
         Task {
             await MainActor.run { historyLoading = true }
-            let list = await apiService.fetchConversationList()
+            let result = await apiService.fetchConversationListResult()
             await MainActor.run {
-                conversationList = list
-                historyLoading = false
+                switch result {
+                case .success(let list):
+                    conversationList = list
+                    historyLoading = false
+                case .authExpired:
+                    handleAuthExpired()
+                case .failure:
+                    historyLoading = false
+                }
             }
         }
     }
@@ -859,16 +893,30 @@ struct AiChatView: View {
                 let data = await Task.detached(priority: .userInitiated) {
                     AiImageCropProcessor.jpegForUpload(image)
                 }.value
-                if let data,
-                   let url = await apiService.uploadFile(
-                    imageData: data,
-                    fileName: AiImageCropProcessor.nextShortImageName(prefix: "img"),
-                    mimeType: "image/jpeg"
-                   ) {
-                    fileURL = url
-                    await MainActor.run {
-                        updateUserMessageImage(messageId: userMsg.id, url: url)
-                        updateAssistantRelatedImage(assistantId: assistantId, url: url)
+                if let data {
+                    let upload = await apiService.uploadFileResult(
+                        imageData: data,
+                        fileName: AiImageCropProcessor.nextShortImageName(prefix: "img"),
+                        mimeType: "image/jpeg"
+                    )
+                    switch upload {
+                    case .success(let url):
+                        fileURL = url
+                        await MainActor.run {
+                            updateUserMessageImage(messageId: userMsg.id, url: url)
+                            updateAssistantRelatedImage(assistantId: assistantId, url: url)
+                        }
+                    case .authExpired:
+                        await MainActor.run { handleAuthExpired() }
+                        return
+                    case .failure:
+                        await MainActor.run {
+                            activeStreamContent += "\n\n图片上传失败，请重试。"
+                            commitActiveStream(assistantId: assistantId, markDone: true)
+                            isLoading = false
+                            uploadingImage = false
+                        }
+                        return
                     }
                 } else {
                     await MainActor.run {
@@ -915,7 +963,7 @@ struct AiChatView: View {
             }
 
             let detected = NSMutableString()
-            await apiService.streamChat(
+            let streamResult = await apiService.streamChat(
                 token: token,
                 prompt: sendText,
                 sessionId: sessionId,
@@ -948,6 +996,16 @@ struct AiChatView: View {
             }
 
             await MainActor.run {
+                if streamResult == .authExpired {
+                    handleAuthExpired()
+                    return
+                }
+                if streamResult == .cancelled {
+                    isLoading = false
+                    loadingText = "正在思考"
+                    streamTask = nil
+                    return
+                }
                 if activeStreamContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     activeStreamContent = "答疑服务已连接，但没有返回内容，请再试一次"
                 }
@@ -989,11 +1047,18 @@ struct AiChatView: View {
                 subject: subject
             )
             guard saved else { return }
-            let list = await apiService.fetchConversationList()
+            let result = await apiService.fetchConversationListResult()
             await MainActor.run {
-                conversationList = list
-                if let match = list.first(where: { $0.sessionId == sessionId }) {
-                    currentConversationId = match.id
+                switch result {
+                case .success(let list):
+                    conversationList = list
+                    if let match = list.first(where: { $0.sessionId == sessionId }) {
+                        currentConversationId = match.id
+                    }
+                case .authExpired:
+                    handleAuthExpired()
+                case .failure:
+                    break
                 }
             }
         }
@@ -1020,13 +1085,21 @@ struct AiChatView: View {
             await MainActor.run { deleteInProgress = true }
             let ok = await apiService.deleteConversation(conversationId: chat.id)
             if ok {
-                let list = await apiService.fetchConversationList()
+                let result = await apiService.fetchConversationListResult()
                 await MainActor.run {
-                    conversationList = list
-                    if currentConversationId == chat.id {
-                        newChat()
+                    switch result {
+                    case .success(let list):
+                        conversationList = list
+                        if currentConversationId == chat.id {
+                            newChat()
+                        }
+                        deleteInProgress = false
+                    case .authExpired:
+                        deleteInProgress = false
+                        handleAuthExpired()
+                    case .failure:
+                        deleteInProgress = false
                     }
-                    deleteInProgress = false
                 }
             } else {
                 await MainActor.run {

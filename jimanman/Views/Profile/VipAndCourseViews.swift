@@ -82,11 +82,72 @@ struct VipCenterView: View {
             VStack(spacing: 0) {
                 ProfileSimpleTopBar(title: "会员中心", onBack: onBack)
                 if AppFeatures.showRecharge {
-                    ProfileMenuRow(title: "储值", action: onOpenRecharge)
+                    ProfileMenuRow(title: "开通会员", action: onOpenRecharge)
                 }
                 ProfileMenuRow(title: "我的订单", action: onOpenOrders)
                 Spacer(minLength: 0)
             }
         }
+    }
+}
+
+// MARK: - 会员服务协议（对齐 Android VipAgreementScreen）
+struct VipAgreementView: View {
+    let onBack: () -> Void
+
+    private let lines: [String] = {
+        guard let url = Bundle.main.url(forResource: "vip_agreement", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }()
+
+    var body: some View {
+        ProfileScreenScaffold(background: Color.white) {
+            VStack(spacing: 0) {
+                ProfileSimpleTopBar(title: "会员服务协议", onBack: onBack, barBackground: Color.clear)
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                            if isHeading(line) {
+                                Text(line)
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundColor(Color(hex: "17181A"))
+                                    .padding(.top, index == 0 ? 0 : 18)
+                                    .padding(.bottom, 6)
+                            } else {
+                                Text(line)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(hex: "4B5563"))
+                                    .lineSpacing(6)
+                                    .padding(.bottom, 6)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.top, 4)
+                    .padding(.bottom, 20)
+                }
+                Button(action: onBack) {
+                    Text("我知道了")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(Color(hex: "00AFA4"))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 22)
+                .padding(.top, 12)
+                .padding(.bottom, 14)
+            }
+        }
+    }
+
+    private func isHeading(_ line: String) -> Bool {
+        line.range(of: "^(第[一二三四五六七八九十]+条|附件)", options: .regularExpression) != nil
     }
 }

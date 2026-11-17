@@ -10,43 +10,20 @@ struct LoginScreen: View {
     }
 }
 
-private enum LoginDialCode: String, CaseIterable, Identifiable {
+private enum LoginDialCode: String {
     case china = "86"
-    case usa = "1"
 
-    var id: String { rawValue }
     var prefix: String { "+\(rawValue)" }
-    var title: String {
-        switch self {
-        case .china: return "中国 +86"
-        case .usa: return "美国 +1"
-        }
-    }
-    var maxDigits: Int {
-        switch self {
-        case .china: return 11
-        case .usa: return 10
-        }
-    }
-    var errorText: String {
-        switch self {
-        case .china: return "请输入正确的 11 位手机号"
-        case .usa: return "请输入正确的 10 位美国手机号"
-        }
-    }
+    var maxDigits: Int { 11 }
+    var errorText: String { "请输入正确的 11 位手机号" }
 
     func isValid(_ value: String) -> Bool {
-        switch self {
-        case .china:
-            return value.range(of: "^1[3-9]\\d{9}$", options: .regularExpression) != nil
-        case .usa:
-            return value.range(of: "^[2-9]\\d{9}$", options: .regularExpression) != nil
-        }
+        value.range(of: "^1[3-9]\\d{9}$", options: .regularExpression) != nil
     }
 }
 
 /// 对齐 Android LoginPoster：薄荷底 + login_bg 顶图 + 白卡片。
-/// iOS 不展示微信登录，默认手机号 + 验证码；账号密码为备选。
+/// iOS 仅国内 +86 手机号登录（验证码 / 账号密码）。
 struct LoginView: View {
     var onDismiss: () -> Void
     var onLoginSuccess: () -> Void
@@ -56,7 +33,7 @@ struct LoginView: View {
         case password
     }
 
-    @State private var loginMode: LoginMode = .code
+    @State private var loginMode: LoginMode = .password
     @State private var phone = ""
     @State private var account = ""
     @State private var verifyCode = ""
@@ -113,7 +90,6 @@ struct LoginView: View {
                                     text: $phone,
                                     placeholder: "请输入手机号",
                                     prefix: dialCode.prefix,
-                                    showDialMenu: true,
                                     keyboard: .phonePad,
                                     error: !phoneError.isEmpty
                                 ) { value in
@@ -149,7 +125,6 @@ struct LoginView: View {
                                     text: $account,
                                     placeholder: "请输入手机号",
                                     prefix: dialCode.prefix,
-                                    showDialMenu: true,
                                     keyboard: .phonePad,
                                     error: !accountError.isEmpty
                                 ) { value in
@@ -249,7 +224,6 @@ struct LoginView: View {
             if showReset {
                 ResetPasswordSheet(
                     initialPhone: account.isEmpty ? phone : account,
-                    dialCode: $dialCode,
                     onDismiss: { showReset = false },
                     onReset: { message in
                         showReset = false
@@ -258,12 +232,6 @@ struct LoginView: View {
                     }
                 )
             }
-        }
-        .onChange(of: dialCode) { code in
-            phone = String(phone.filter(\.isNumber).prefix(code.maxDigits))
-            account = String(account.filter(\.isNumber).prefix(code.maxDigits))
-            phoneError = ""
-            accountError = ""
         }
     }
 
@@ -359,7 +327,6 @@ struct LoginView: View {
         text: Binding<String>,
         placeholder: String,
         prefix: String? = nil,
-        showDialMenu: Bool = false,
         keyboard: UIKeyboardType,
         letterSpacing: CGFloat = 0.3,
         isSecure: Bool = false,
@@ -369,25 +336,9 @@ struct LoginView: View {
     ) -> some View {
         HStack(spacing: 8) {
             if let prefix {
-                if showDialMenu {
-                    Menu {
-                        ForEach(LoginDialCode.allCases) { item in
-                            Button(item.title) { dialCode = item }
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Text(prefix)
-                                .font(.system(size: 14, weight: .bold))
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .foregroundColor(Color(hex: "374151"))
-                    }
-                } else {
-                    Text(prefix)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Color(hex: "374151"))
-                }
+                Text(prefix)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Color(hex: "374151"))
             }
             Group {
                 if isSecure {
@@ -549,9 +500,10 @@ struct LoginView: View {
 
 private struct ResetPasswordSheet: View {
     let initialPhone: String
-    @Binding var dialCode: LoginDialCode
     let onDismiss: () -> Void
     let onReset: (String) -> Void
+
+    private let dialCode = LoginDialCode.china
 
     @State private var step = 1
     @State private var phone = ""
@@ -626,7 +578,7 @@ private struct ResetPasswordSheet: View {
                     VStack(alignment: .leading, spacing: 0) {
                         if step == 1 {
                             labeled("手机号")
-                            inputField(text: $phone, placeholder: "请输入注册手机号", prefix: dialCode.prefix, showDialMenu: true, keyboard: .phonePad, error: !phoneError.isEmpty) {
+                            inputField(text: $phone, placeholder: "请输入注册手机号", prefix: dialCode.prefix, keyboard: .phonePad, error: !phoneError.isEmpty) {
                                 phone = String($0.filter(\.isNumber).prefix(dialCode.maxDigits))
                                 phoneError = ""
                             }
@@ -836,7 +788,6 @@ private struct ResetPasswordSheet: View {
         text: Binding<String>,
         placeholder: String,
         prefix: String? = nil,
-        showDialMenu: Bool = false,
         keyboard: UIKeyboardType,
         letterSpacing: CGFloat = 0.3,
         isSecure: Bool = false,
@@ -846,25 +797,9 @@ private struct ResetPasswordSheet: View {
     ) -> some View {
         HStack(spacing: 8) {
             if let prefix {
-                if showDialMenu {
-                    Menu {
-                        ForEach(LoginDialCode.allCases) { item in
-                            Button(item.title) { dialCode = item }
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Text(prefix)
-                                .font(.system(size: 14, weight: .bold))
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .foregroundColor(Color(hex: "374151"))
-                    }
-                } else {
-                    Text(prefix)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Color(hex: "374151"))
-                }
+                Text(prefix)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Color(hex: "374151"))
             }
             Group {
                 if isSecure {
